@@ -9,92 +9,94 @@ app.use(express.static(__dirname));
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ─── Proxy Endpoint ───────────────────────────────────────────────────────────
-// Frontend calls /proxy?endpoint=nba (or boost, menu, lottery...)
-// Server fetches SportsBetting.ag and returns data — no CORS for users
-
-const SB_ENDPOINTS = {
-  menu:     "https://www.sportsbetting.ag/api/sportsbetting/get-menu",
-  nba:      "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=Basketball&league=NBA",
-  boost:    "https://www.sportsbetting.ag/api/sportsbetting/get-contests-by-contest-type2?contestType2=Daily%20Booster",
-  mlb:      "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=Baseball&league=MLB",
-  nhl:      "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=Hockey&league=NHL",
-  soccer:   "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=Soccer&league=UEFA+Champions+League",
-  tennis:   "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=Tennis&league=ATP+Monte+Carlo",
-  ufc:      "https://www.sportsbetting.ag/api/sportsbetting/offering-by-league?sport=MMA&league=UFC",
+// ESPN public APIs — no auth, no Cloudflare
+const ESPN_ENDPOINTS = {
+  nba:    "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  mlb:    "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  nhl:    "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  ufc:    "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
+  soccer: "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
+  nfl:    "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  golf:   "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard",
 };
 
-const BROWSER_HEADERS = {
-  "Accept": "application/json, text/plain, */*",
-  "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Referer": "https://www.sportsbetting.ag/sportsbook",
-  "Origin": "https://www.sportsbetting.ag",
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
+// SportsBetting.ag links — for directing users to bet
+const SB_URLS = {
+  nba:    "https://www.sportsbetting.ag/sportsbook/basketball/nba",
+  mlb:    "https://www.sportsbetting.ag/sportsbook/baseball/mlb",
+  nhl:    "https://www.sportsbetting.ag/sportsbook/hockey/nhl",
+  ufc:    "https://www.sportsbetting.ag/sportsbook/mma",
+  soccer: "https://www.sportsbetting.ag/sportsbook/soccer",
+  tennis: "https://www.sportsbetting.ag/sportsbook/tennis",
+  nfl:    "https://www.sportsbetting.ag/sportsbook/football/nfl",
+  golf:   "https://www.sportsbetting.ag/sportsbook/golf",
+  boost:  "https://www.sportsbetting.ag/sportsbook/promotions",
+  default:"https://www.sportsbetting.ag/sportsbook",
 };
 
-app.get("/proxy", async (req, res) => {
-  const key = req.query.endpoint;
-  const url = SB_ENDPOINTS[key];
-  if (!url) return res.status(400).json({ error: `Unknown endpoint: ${key}` });
-
+async function espnFetch(key) {
+  const url = ESPN_ENDPOINTS[key];
+  if (!url) return null;
   try {
-    const response = await fetch(url, { headers: BROWSER_HEADERS, timeout: 8000 });
-    const data = await response.json();
-    res.json({ ok: true, data });
+    const res = await fetch(url, { timeout: 8000 });
+    if (!res.ok) { console.error(`espnFetch(${key}): HTTP ${res.status}`); return null; }
+    return await res.json();
   } catch (err) {
-    console.error(`Proxy error (${key}):`, err.message);
-    res.json({ ok: false, error: err.message, data: null });
+    console.error(`espnFetch(${key}):`, err.message);
+    return null;
   }
-});
-
-// ─── Intent Detection ─────────────────────────────────────────────────────────
+}
 
 function detectIntent(q) {
   q = q.toLowerCase();
-  if (/nba|basketball|lakers|celtics|warriors|knicks/.test(q)) return "nba";
-  if (/mlb|baseball/.test(q)) return "mlb";
-  if (/nhl|hockey/.test(q)) return "nhl";
-  if (/soccer|football|uefa|champions|mls/.test(q)) return "soccer";
-  if (/tennis|atp|wtf/.test(q)) return "tennis";
-  if (/ufc|mma|fight/.test(q)) return "ufc";
-  if (/boost|promo|booster|daily/.test(q)) return "boost";
-  return "menu";
+  if (/nba|basketball|lakers|celtics|warriors|knicks|bulls|heat|nets/.test(q)) return "nba";
+  if (/mlb|baseball|yankees|dodgers|mets|cubs|braves/.test(q)) return "mlb";
+  if (/nhl|hockey|rangers|bruins|leafs|penguins/.test(q)) return "nhl";
+  if (/ufc|mma|fight|fighter|pelea/.test(q)) return "ufc";
+  if (/soccer|football|uefa|champions|mls|premier|liga|futbol|fútbol/.test(q)) return "soccer";
+  if (/tennis|atp|wta/.test(q)) return "tennis";
+  if (/nfl|american football|patriots|cowboys|eagles/.test(q)) return "nfl";
+  if (/golf|pga|masters/.test(q)) return "golf";
+  if (/boost|promo|booster|daily|promocion|promoción/.test(q)) return "boost";
+  return "nba"; // default to NBA as most popular
 }
 
-// ─── Prompt Builder ───────────────────────────────────────────────────────────
+function parseESPNGames(data, intent) {
+  if (!data || !data.events) return null;
+  return data.events.slice(0, 10).map(e => {
+    const comp = e.competitions[0];
+    const teams = comp.competitors.map(c => `${c.team.displayName} (${c.score || "TBD"})`);
+    const status = comp.status?.type?.description || "Scheduled";
+    const date = e.date ? new Date(e.date).toLocaleString("en-US", { timeZone: "America/New_York" }) : "";
+    return `${teams[0]} vs ${teams[1]} — ${status}${date ? " @ " + date : ""}`;
+  }).join("\n");
+}
 
-function buildPrompt(intent, liveData, menuData, userQuery) {
-  const catalogLines = menuData && Array.isArray(menuData)
-    ? menuData.slice(0, 20).map(i => `- ${i.sport || i.name || i.label || JSON.stringify(i)}`).join("\n")
-    : "- NBA, MLB, NHL, UFC, Tennis, Soccer, NFL, Golf, Boxing, Lottery";
-
-  const specificData = liveData
-    ? `SPECIFIC LIVE DATA (${intent}):\n${JSON.stringify(liveData, null, 2).slice(0, 3000)}`
-    : `SPECIFIC DATA: Not available for ${intent}.`;
+function buildPrompt(intent, espnData, userQuery) {
+  const sbUrl = SB_URLS[intent] || SB_URLS.default;
+  const gamesText = parseESPNGames(espnData, intent);
+  const dataSection = gamesText
+    ? `UPCOMING/LIVE GAMES (${intent.toUpperCase()}) from ESPN:\n${gamesText}`
+    : `No live game data available for ${intent} right now.`;
 
   return `You are a helpful sports betting assistant for SportsBetting.ag.
-You respond in the same language the user writes in (Spanish or English).
+Respond in the same language the user writes in (Spanish or English).
 
-LIVE SPORTSBOOK CATALOG:
-${catalogLines}
+${dataSection}
 
-${specificData}
+BETTING LINK for ${intent.toUpperCase()}: ${sbUrl}
 
 RULES:
-- Only use data from above. Never invent games or odds.
-- Always include the direct betting URL at end as "Bet here: [URL]"
-- Explain American odds simply: +150 = win $150 on $100 bet
-- If sport unavailable, say so and suggest 2 alternatives with URLs
-- Keep responses to 3-4 sentences max
+- Use the game data above to discuss matchups, trends, and betting angles
+- You do NOT have live odds — tell the user to check SportsBetting.ag for current lines
+- Always end with: "Apuesta aquí / Bet here: ${sbUrl}"
+- Explain American odds simply when relevant: +150 = ganás $150 por cada $100 apostado
+- If no games are available, suggest checking the link directly
+- Keep responses concise (3-5 sentences)
 - End with one follow-up question
 
 User question: "${userQuery}"`;
 }
-
-// ─── Claude Caller ────────────────────────────────────────────────────────────
 
 async function callClaude(prompt, history = []) {
   return await client.messages.stream({
@@ -104,27 +106,19 @@ async function callClaude(prompt, history = []) {
   });
 }
 
-// ─── Chat Route ───────────────────────────────────────────────────────────────
-
 app.post("/chat", async (req, res) => {
   const { message, history = [] } = req.body;
   if (!message) return res.status(400).json({ error: "message is required" });
 
   try {
     const intent = detectIntent(message);
+    const espnData = intent !== "tennis" && intent !== "boost"
+      ? await espnFetch(intent)
+      : null;
 
-    // Fetch both menu and specific data server-side
-    const [menuRes, specificRes] = await Promise.all([
-      fetch(`${SB_ENDPOINTS.menu}`, { headers: BROWSER_HEADERS, timeout: 8000 }).then(r => r.json()).catch(() => null),
-      SB_ENDPOINTS[intent]
-        ? fetch(SB_ENDPOINTS[intent], { headers: BROWSER_HEADERS, timeout: 8000 }).then(r => r.json()).catch(() => null)
-        : Promise.resolve(null),
-    ]);
+    console.log(`Intent: ${intent} | ESPN: ${espnData ? "OK" : "no data"}`);
 
-        console.log("Menu:", menuRes ? "OK" : "FAILED");      // ← aquí
-    console.log("Specific:", specificRes ? "OK" : "FAILED"); // ← aquí
-
-    const prompt = buildPrompt(intent, specificRes, menuRes, message);
+    const prompt = buildPrompt(intent, espnData, message);
     const stream = await callClaude(prompt, history);
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -138,7 +132,7 @@ app.post("/chat", async (req, res) => {
     }
 
     await stream.finalMessage();
-    res.write(`data: ${JSON.stringify({ done: true, intent, live: !!specificRes })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, intent, live: !!espnData })}\n\n`);
     res.end();
   } catch (err) {
     console.error("Chat error:", err.message);
@@ -147,11 +141,8 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Betting assistant running at http://localhost:${PORT}`);
   console.log("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "loaded" : "MISSING");
-
 });
