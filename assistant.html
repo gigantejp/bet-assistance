@@ -252,14 +252,48 @@
 
     /* version tag */
     .version-tag { font-size: .66rem; background: #1a0a2e; color: var(--purple); border: 1px solid #2a1050; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+
+    /* ── Server banner ── */
+    #server-banner {
+      display: none;
+      background: #1a0a00;
+      border-bottom: 1px solid #3a1800;
+      padding: 10px 20px;
+      gap: 12px;
+      align-items: center;
+      font-size: .85rem;
+      flex-shrink: 0;
+    }
+    #server-banner strong { color: var(--warn); }
+    .banner-code {
+      background: #0a0500;
+      border: 1px solid #3a1800;
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-family: monospace;
+      color: #ffcc80;
+      font-size: .82rem;
+    }
+    #server-status { font-size: .74rem; font-weight: 700; margin-left: auto; }
   </style>
 </head>
 <body>
+
+<!-- ── Server banner ── -->
+<div id="server-banner">
+  <strong>⚠ Servidor requerido</strong>
+  <span>Para usar el asistente IA, ejecuta localmente:</span>
+  <span class="banner-code">npm install && node server.js</span>
+  <span>→ abre</span>
+  <span class="banner-code">http://localhost:3000/assistant.html</span>
+  <span>(Los eventos ESPN sí cargan sin servidor)</span>
+</div>
 
 <!-- ── Header ── -->
 <header>
   <span class="logo">⚡ AI Betting Assistant</span>
   <span class="badge">Prompt Engineering Demo</span>
+  <span id="server-status" style="font-size:.74rem;color:var(--muted)">Verificando...</span>
   <div class="sport-tabs" id="sport-tabs">
     <button class="sport-tab active" data-sport="nba">🏀 NBA</button>
     <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
@@ -422,17 +456,51 @@
     loadEvents(currentSport);
   });
 
+  // ESPN endpoints (fallback directo cuando no hay servidor)
+  const ESPN_DIRECT = {
+    nba:    'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+    nfl:    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+    mlb:    'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+    nhl:    'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+    soccer: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
+    ufc:    'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
+  };
+
+  // Verifica si el servidor Node.js está corriendo
+  async function checkServer() {
+    try {
+      const r = await fetch('/api/scoreboard/nba', { signal: AbortSignal.timeout(2000) });
+      return r.ok || r.status < 500;
+    } catch { return false; }
+  }
+
+  // Parsea respuesta JSON solo si Content-Type es application/json
+  async function safeJson(res) {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      throw new Error('El servidor no está disponible. Ejecuta: npm install && node server.js');
+    }
+    return res.json();
+  }
+
   // ── Load ESPN events ──
   async function loadEvents(sport) {
     eventsList.innerHTML = '<div class="no-events loading-spinner">Cargando...</div>';
     eventCount.textContent = '—';
     try {
-      const res = await fetch(`/api/scoreboard/${sport}`);
-      const data = await res.json();
+      // Intenta primero el proxy del servidor, luego ESPN directo como fallback
+      let data;
+      try {
+        const res = await fetch(`/api/scoreboard/${sport}`, { signal: AbortSignal.timeout(3000) });
+        data = await safeJson(res);
+      } catch {
+        const res = await fetch(ESPN_DIRECT[sport], { cache: 'no-store' });
+        data = await res.json();
+      }
       currentEvents = data.events || [];
       renderEvents(currentEvents);
     } catch (err) {
-      eventsList.innerHTML = `<div class="no-events">Error: ${err.message}</div>`;
+      eventsList.innerHTML = `<div class="no-events">Error cargando eventos: ${escHtml(err.message)}</div>`;
     }
   }
 
@@ -533,7 +601,7 @@
         body: JSON.stringify({ userQuery: query, events: eventsToSend }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res);
 
       // Update chat message
       loadingMsg.querySelector('.msg-bubble').innerHTML = renderBetResult(data.result);
@@ -584,7 +652,27 @@
   sendBtn.addEventListener('click', sendMessage);
   chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
 
+  // ── Server status banner ──
+  const serverBanner = document.getElementById('server-banner');
+  const serverStatus = document.getElementById('server-status');
+
+  async function initServerCheck() {
+    const ok = await checkServer();
+    if (!ok) {
+      serverBanner.style.display = 'flex';
+      sendBtn.disabled = true;
+      chatInput.placeholder = 'Servidor no disponible. Ver instrucciones arriba.';
+      serverStatus.textContent = '✗ Sin servidor';
+      serverStatus.style.color = 'var(--red)';
+    } else {
+      serverBanner.style.display = 'none';
+      serverStatus.textContent = '✓ Servidor activo';
+      serverStatus.style.color = 'var(--green)';
+    }
+  }
+
   // ── Init ──
+  initServerCheck();
   loadEvents(currentSport);
 </script>
 </body>
