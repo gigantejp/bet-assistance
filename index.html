@@ -250,25 +250,12 @@
     const eventsTable = document.getElementById('events-table');
     const refreshBtn = document.getElementById('refresh-btn');
     const espnEndpoints = {
-      nba: [
-        'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
-      ],
-      nfl: [
-        'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
-      ],
-      mlb: [
-        'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
-      ],
-      nhl: [
-        'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
-      ],
-      soccer: [
-        'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
-        'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
-      ],
-      ufc: [
-        'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
-      ],
+      nba: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+      nfl: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+      mlb: 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+      nhl: 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+      soccer: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
+      ufc: 'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
     };
 
     function renderMenu() {
@@ -309,20 +296,17 @@
     }
 
     async function fetchScoreboard(sport) {
-      const endpointCandidates = espnEndpoints[sport];
-      if (!endpointCandidates?.length) throw new Error('Deporte no soportado');
+      const localResponse = await fetch(`/api/scoreboard/${sport}`);
+      if (localResponse.ok) return await localResponse.json();
+      if (localResponse.status !== 404) throw new Error(`Error ${localResponse.status}`);
 
-      for (const endpoint of endpointCandidates) {
-        try {
-          const remoteResponse = await fetch(endpoint, { cache: 'no-store' });
-          if (!remoteResponse.ok) continue;
-          return await remoteResponse.json();
-        } catch (_) {
-          // Intenta el siguiente endpoint alternativo.
-        }
-      }
+      const espnUrl = espnEndpoints[sport];
+      if (!espnUrl) throw new Error('Deporte no soportado');
 
-      throw new Error('No se pudo cargar ESPN');
+      const remoteResponse = await fetch(espnUrl);
+      if (!remoteResponse.ok) throw new Error(`Error ${remoteResponse.status}`);
+
+      return await remoteResponse.json();
     }
 
     async function loadSport() {
