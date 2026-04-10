@@ -130,6 +130,17 @@
     .bet-market { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
     .bet-selection { font-weight: 700; font-size: .92rem; color: var(--green); }
     .bet-reason { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+    .bet-meta-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
+    .confidence-badge {
+      font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+      padding: 2px 7px; border-radius: 999px;
+    }
+    .confidence-badge.high   { background: #0c2b1c; color: #2dcf70; border: 1px solid #1e6942; }
+    .confidence-badge.medium { background: #1a2b10; color: #a8e063; border: 1px solid #3a5c1a; }
+    .confidence-badge.low    { background: #2b2010; color: #d4a04a; border: 1px solid #5c3d1a; }
+    .implied-prob { font-size: .72rem; color: var(--muted); }
+    .bet-evidence { margin-top: 5px; padding-left: 14px; }
+    .bet-evidence li { font-size: .76rem; color: #6a96b0; list-style: disc; }
     .bet-summary {
       background: #0a1f30;
       border: 1px solid var(--line);
@@ -644,10 +655,22 @@
     if (result.bets?.length) {
       html += '<div class="bet-cards">';
       result.bets.forEach(bet => {
+        const conf = (bet.confidence || '').toLowerCase();
+        const confBadge = conf
+          ? `<span class="confidence-badge ${conf}">${conf}</span>`
+          : '';
+        const impliedProb = bet.implied_probability
+          ? `<span class="implied-prob">implied: ${escHtml(bet.implied_probability)}</span>`
+          : '';
+        const evidenceItems = Array.isArray(bet.evidence) && bet.evidence.length
+          ? `<ul class="bet-evidence">${bet.evidence.map(e => `<li>${escHtml(e)}</li>`).join('')}</ul>`
+          : '';
         html += `<div class="bet-card">
           <div class="bet-market">${escHtml(bet.market)}</div>
           <div class="bet-selection">▶ ${escHtml(bet.selection)}</div>
+          <div class="bet-meta-row">${confBadge}${impliedProb}</div>
           <div class="bet-reason">${escHtml(bet.reason)}</div>
+          ${evidenceItems}
         </div>`;
       });
       html += '</div>';

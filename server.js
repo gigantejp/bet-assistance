@@ -211,22 +211,40 @@ app.post("/chat", async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════
 //  SPEC-COMPLIANT PROMPT ENGINEERING SYSTEM  (AI PM Demo)
-//  Spec: AI Betting Assistant — Prompt Design & Generation v1
+//  Spec: AI Betting Assistant — Prompt Design & Generation v2
 // ════════════════════════════════════════════════════════════════
 
-// 3.2 System Prompt — versioned
+// 3.2 System Prompt — v2
+// Key upgrades over v1:
+//  - Explicit analysis framework (4 steps)
+//  - Confidence criteria with numeric thresholds
+//  - Mandatory data citation (anti-hallucination)
+//  - Odds → implied probability instruction
 const SYSTEM_PROMPT = {
-  version: "v1",
-  text: `You are a sports betting assistant.
+  version: "v2",
+  text: `You are an expert sports betting analyst. Your recommendations must be grounded in the data provided.
 
-Rules:
-- Only use the data provided in the context
-- Do not invent events, odds, or results
-- Be concise and actionable
-- Suggest bets only when there is reasonable confidence
-- Never guarantee outcomes
-- Always respond in English
-- If data is insufficient, say so clearly`,
+ANALYSIS FRAMEWORK — reason through these steps before recommending:
+1. GAME STATUS: Is the game live (with a score) or upcoming? Live games carry momentum signals; upcoming games offer only the scheduled matchup.
+2. COMPETITIVE BALANCE: Read the odds. Convert American odds to implied probability:
+   - Favorite:  |odds| / (|odds| + 100)  → e.g., -150 = 60% implied win probability
+   - Underdog:  100 / (odds + 100)       → e.g., +120 = 45.5% implied win probability
+3. VALUE ASSESSMENT: Does the implied probability seem fair given the available data? If odds are near -110/-110, it is a near coin-flip — only recommend if there is a specific signal.
+4. DATA SUFFICIENCY: Do you have enough context to justify a recommendation? If only team names and status are available, state the limited basis explicitly.
+
+CONFIDENCE LEVELS — apply these criteria strictly:
+- HIGH: Clear favorite at -200 or shorter, OR strong live momentum visible in score
+- MEDIUM: Moderate favorite (-120 to -190), or a meaningful edge visible in the data
+- LOW: Near-even odds (-115 to +115), or only scheduled game info with no other signal
+- NONE: Return empty bets array and explain why in the summary
+
+RULES:
+- Every bet MUST cite specific data from the context (team name, score, exact odds)
+- Do not invent statistics, streaks, or historical data not present in the context
+- Do not recommend LOW-confidence bets unless the user explicitly asks for them
+- Always include the implied probability when discussing odds
+- Use uncertainty language — never guarantee outcomes
+- Always respond in English`,
 };
 
 // Demo odds table (ESPN doesn't expose real odds)
@@ -278,17 +296,24 @@ function formatContext(events = []) {
 function buildPrompt(userQuery, formattedContext) {
   const outputInstruction = `Return your answer strictly in the following JSON format:
 {
-  "summary": "short explanation",
+  "summary": "2-sentence analysis of the betting landscape",
   "bets": [
     {
-      "market": "market name",
-      "selection": "team or option",
-      "reason": "justification"
+      "market": "market name (e.g. Match Winner, Spread, Over/Under)",
+      "selection": "team or option name",
+      "confidence": "high | medium | low",
+      "implied_probability": "e.g. 60%",
+      "reason": "grounded justification citing specific odds and data from the context",
+      "evidence": ["specific data point 1", "specific data point 2"]
     }
   ]
 }
 
-If data is insufficient, return: {"summary": "Insufficient data to recommend", "bets": []}`;
+Rules for the JSON:
+- confidence must be exactly one of: "high", "medium", or "low"
+- implied_probability must be a percentage string derived from the odds
+- evidence must be an array of strings, each citing a specific fact from the context
+- If data is insufficient for any recommendation, return: {"summary": "Insufficient data — only team names available. Check the sportsbook for current lines.", "bets": []}`;
 
   return {
     system: SYSTEM_PROMPT.text,
@@ -303,7 +328,8 @@ If data is insufficient, return: {"summary": "Insufficient data to recommend", "
   };
 }
 
-// 6.2 Output Validator — must be valid JSON with required fields
+// 6.2 Output Validator — must be valid JSON with required fields (v2)
+const VALID_CONFIDENCE = new Set(["high", "medium", "low"]);
 function validateOutput(text) {
   try {
     const match = text.match(/\{[\s\S]*\}/);
@@ -314,6 +340,11 @@ function validateOutput(text) {
     for (const bet of parsed.bets) {
       if (!bet.market || !bet.selection || !bet.reason)
         throw new Error("Invalid bet structure: missing market/selection/reason");
+      // v2 optional fields — normalise if present, default if absent
+      if (bet.confidence && !VALID_CONFIDENCE.has(bet.confidence.toLowerCase()))
+        bet.confidence = "low"; // coerce rather than reject
+      if (bet.confidence) bet.confidence = bet.confidence.toLowerCase();
+      if (!Array.isArray(bet.evidence)) bet.evidence = [];
     }
     return { valid: true, data: parsed };
   } catch (err) {
