@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Betting Assistant — Prompt Engineering Demo</title>
+  <style>
+    :root {
+      --bg: #07111c;
+      --panel: #0d1e2e;
+      --card: #112235;
+      --line: #1a3348;
+      --text: #dceaf5;
+      --muted: #6a94b0;
+      --accent: #3b9eff;
+      --green: #00d4aa;
+      --warn: #ffa726;
+      --red: #ff5252;
+      --purple: #bb86fc;
+      --tag-bg: #0e2336;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Top bar ── */
+    header {
+      background: #060f1a;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    .logo { font-size: 1.1rem; font-weight: 800; color: var(--accent); letter-spacing: .3px; }
+    .badge { font-size: .7rem; background: #0e2a40; border: 1px solid #1a4060; color: var(--accent); padding: 3px 8px; border-radius: 999px; letter-spacing: .05em; }
+    .sport-tabs { display: flex; gap: 6px; margin-left: auto; }
+    .sport-tab { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: .82rem; transition: all .15s; }
+    .sport-tab:hover { border-color: var(--accent); color: var(--accent); }
+    .sport-tab.active { background: #0e2a40; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+    /* ── Three-panel layout ── */
+    .workspace {
+      display: grid;
+      grid-template-columns: 260px 1fr 340px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left: Events ── */
+    .events-panel {
+      border-right: 1px solid var(--line);
+      background: #09182a;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; animation: blink 1.5s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .events-list { overflow-y: auto; flex: 1; padding: 8px; }
+    .event-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 11px 12px;
+      margin-bottom: 7px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .event-card:hover { border-color: #2a5070; }
+    .event-card.selected { border-color: var(--accent); background: #0f2640; }
+    .ev-teams { font-weight: 700; font-size: .88rem; line-height: 1.4; margin-bottom: 5px; }
+    .ev-status { font-size: .74rem; color: var(--muted); }
+    .ev-status.live { color: var(--green); }
+    .ev-score { font-size: 1rem; font-weight: 800; color: var(--green); margin-top: 4px; }
+    .ev-odds { margin-top: 6px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .odd-pill { background: #091e30; border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; font-size: .72rem; color: #7ab8ff; }
+    .no-events { color: var(--muted); font-size: .84rem; text-align: center; padding: 24px 12px; }
+
+    /* ── Center: Chat ── */
+    .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .msg { max-width: 88%; }
+    .msg.user { align-self: flex-end; }
+    .msg.assistant { align-self: flex-start; }
+    .msg-bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: .9rem;
+      line-height: 1.55;
+    }
+    .msg.user .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.assistant .msg-bubble { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+    .msg-meta { font-size: .72rem; color: var(--muted); margin-top: 4px; }
+    .msg.user .msg-meta { text-align: right; }
+
+    /* Bet cards */
+    .bet-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .bet-card {
+      background: #091e30;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .bet-market { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+    .bet-selection { font-weight: 700; font-size: .92rem; color: var(--green); }
+    .bet-reason { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+    .bet-summary {
+      background: #0a1f30;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: .85rem;
+      margin-bottom: 6px;
+    }
+    .no-data-msg { color: var(--warn); font-size: .84rem; font-style: italic; }
+
+    /* Input */
+    .chat-input-area {
+      border-top: 1px solid var(--line);
+      padding: 14px 16px;
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .chat-input {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: .9rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .chat-input:focus { border-color: var(--accent); }
+    .chat-input::placeholder { color: var(--muted); }
+    .send-btn {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: .88rem;
+      transition: opacity .15s;
+    }
+    .send-btn:disabled { opacity: .45; cursor: default; }
+
+    /* ── Right: AI PM Transparency ── */
+    .debug-panel {
+      border-left: 1px solid var(--line);
+      background: #08131f;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .debug-tabs { display: flex; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+    .debug-tab { flex: 1; padding: 10px 0; font-size: .74rem; text-align: center; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: all .15s; }
+    .debug-tab.active { color: var(--accent); border-color: var(--accent); }
+    .debug-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+    /* Prompt builder sections */
+    .prompt-section { margin-bottom: 10px; }
+    .section-label {
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .section-label.sys { background: #1a0a2e; color: var(--purple); border: 1px solid #2a1050; }
+    .section-label.ctx { background: #0a1e2e; color: var(--accent); border: 1px solid #1a3a50; }
+    .section-label.usr { background: #0a2010; color: var(--green); border: 1px solid #1a4020; }
+    .section-label.out { background: #1e1400; color: var(--warn); border: 1px solid #3a2800; }
+    .section-num { font-weight: 900; opacity: .7; }
+    .code-block {
+      background: #060f1a;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: .74rem;
+      color: #a0c8e0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+    .code-block.empty { color: var(--muted); font-style: italic; font-family: inherit; }
+
+    /* Token metrics */
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .metric-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .metric-val { font-size: 1.3rem; font-weight: 800; }
+    .metric-val.green { color: var(--green); }
+    .metric-val.blue { color: var(--accent); }
+    .metric-val.purple { color: var(--purple); }
+    .metric-val.warn { color: var(--warn); }
+    .metric-lbl { font-size: .68rem; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
+    .log-entry {
+      background: #060f1a;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: .76rem;
+      font-family: monospace;
+      color: #80b0c8;
+      line-height: 1.6;
+    }
+    .log-entry.success .log-key { color: var(--green); }
+    .log-entry.fail .log-key { color: var(--red); }
+    .log-key { color: var(--accent); }
+    .log-val { color: var(--text); }
+
+    .placeholder-msg {
+      color: var(--muted);
+      font-size: .82rem;
+      text-align: center;
+      padding: 30px 16px;
+      line-height: 1.6;
+    }
+    .placeholder-msg strong { color: var(--accent); display: block; margin-bottom: 6px; }
+
+    .loading-spinner { text-align: center; color: var(--muted); padding: 12px; font-size: .84rem; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+    /* version tag */
+    .version-tag { font-size: .66rem; background: #1a0a2e; color: var(--purple); border: 1px solid #2a1050; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <span class="logo">⚡ AI Betting Assistant</span>
+  <span class="badge">Prompt Engineering Demo</span>
+  <div class="sport-tabs" id="sport-tabs">
+    <button class="sport-tab active" data-sport="nba">🏀 NBA</button>
+    <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
+    <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
+    <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
+    <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
+    <button class="sport-tab" data-sport="ufc">🥊 UFC</button>
+  </div>
+</header>
+
+<!-- ── Workspace ── -->
+<div class="workspace">
+
+  <!-- Left: Live Events -->
+  <aside class="events-panel">
+    <div class="panel-head">
+      <span><span class="live-dot"></span>Live Events</span>
+      <span id="event-count" style="color:var(--accent);font-weight:700;">—</span>
+    </div>
+    <div class="events-list" id="events-list">
+      <div class="no-events">Cargando eventos ESPN...</div>
+    </div>
+  </aside>
+
+  <!-- Center: Chat -->
+  <section class="chat-panel">
+    <div class="messages" id="messages">
+      <div class="msg assistant">
+        <div class="msg-bubble">
+          <strong style="color:var(--accent)">Hola, soy tu asistente de apuestas.</strong><br/><br/>
+          Selecciona un deporte en el menú, elige un partido de la lista, y pregúntame algo. Por ejemplo:<br/><br/>
+          <em style="color:var(--muted)">"¿Cuál es la mejor apuesta para este partido?"<br/>
+          "¿Qué tan seguro es apostar al favorito?"</em>
+        </div>
+        <div class="msg-meta">Sistema</div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <input class="chat-input" id="chat-input" type="text"
+        placeholder="Pregunta sobre el partido seleccionado…" />
+      <button class="send-btn" id="send-btn">Enviar</button>
+    </div>
+  </section>
+
+  <!-- Right: AI PM Transparency -->
+  <aside class="debug-panel">
+    <div class="debug-tabs">
+      <div class="debug-tab active" data-tab="prompt">Prompt Builder</div>
+      <div class="debug-tab" data-tab="metrics">Métricas</div>
+    </div>
+    <div class="debug-body">
+
+      <!-- Prompt Builder tab -->
+      <div id="tab-prompt">
+        <div class="placeholder-msg" id="prompt-placeholder">
+          <strong>Cómo funciona el prompt</strong>
+          Haz una pregunta para ver cómo se construye el prompt en tiempo real siguiendo la arquitectura del spec.
+        </div>
+        <div id="prompt-sections" style="display:none">
+          <div class="prompt-section">
+            <div class="section-label sys">
+              <span class="section-num">1</span> System Prompt
+              <span class="version-tag" id="prompt-version">v1</span>
+            </div>
+            <div class="code-block" id="sec-system"></div>
+          </div>
+          <div class="prompt-section">
+            <div class="section-label ctx"><span class="section-num">2</span> Context Data</div>
+            <div class="code-block" id="sec-context"></div>
+          </div>
+          <div class="prompt-section">
+            <div class="section-label usr"><span class="section-num">3</span> User Input</div>
+            <div class="code-block" id="sec-user"></div>
+          </div>
+          <div class="prompt-section">
+            <div class="section-label out"><span class="section-num">4</span> Output Format</div>
+            <div class="code-block" id="sec-output"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics tab -->
+      <div id="tab-metrics" style="display:none">
+        <div class="placeholder-msg" id="metrics-placeholder">
+          <strong>Token & Latency Metrics</strong>
+          Aquí aparecerán las métricas de cada llamada a la API de Claude.
+        </div>
+        <div id="metrics-content" style="display:none">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-val blue" id="m-input">—</div>
+              <div class="metric-lbl">Input tokens</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-val green" id="m-output">—</div>
+              <div class="metric-lbl">Output tokens</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-val purple" id="m-cache">—</div>
+              <div class="metric-lbl">Cache read tk</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-val warn" id="m-latency">—</div>
+              <div class="metric-lbl">Latency ms</div>
+            </div>
+          </div>
+          <div class="log-entry" id="log-entry"></div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+
+<script>
+  // ── State ──
+  let currentSport = 'nba';
+  let currentEvents = [];
+  let selectedEvent = null;
+  let isLoading = false;
+  let activeDebugTab = 'prompt';
+
+  // ── DOM refs ──
+  const messagesEl   = document.getElementById('messages');
+  const chatInput    = document.getElementById('chat-input');
+  const sendBtn      = document.getElementById('send-btn');
+  const eventsList   = document.getElementById('events-list');
+  const eventCount   = document.getElementById('event-count');
+  const promptPH     = document.getElementById('prompt-placeholder');
+  const promptSecs   = document.getElementById('prompt-sections');
+  const metricsPH    = document.getElementById('metrics-placeholder');
+  const metricsC     = document.getElementById('metrics-content');
+
+  // ── Demo odds ──
+  const DEMO_MARKETS = [
+    { away: '+120', draw: '+280', home: '-150' },
+    { away: '-110', draw: '+300', home: '+100' },
+    { away: '+200', draw: '+250', home: '-230' },
+  ];
+
+  // ── Tabs (debug panel) ──
+  document.querySelectorAll('.debug-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.debug-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeDebugTab = tab.dataset.tab;
+      document.getElementById('tab-prompt').style.display  = activeDebugTab === 'prompt'  ? '' : 'none';
+      document.getElementById('tab-metrics').style.display = activeDebugTab === 'metrics' ? '' : 'none';
+    });
+  });
+
+  // ── Sport tabs ──
+  document.getElementById('sport-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.sport-tab');
+    if (!btn) return;
+    document.querySelectorAll('.sport-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentSport = btn.dataset.sport;
+    selectedEvent = null;
+    loadEvents(currentSport);
+  });
+
+  // ── Load ESPN events ──
+  async function loadEvents(sport) {
+    eventsList.innerHTML = '<div class="no-events loading-spinner">Cargando...</div>';
+    eventCount.textContent = '—';
+    try {
+      const res = await fetch(`/api/scoreboard/${sport}`);
+      const data = await res.json();
+      currentEvents = data.events || [];
+      renderEvents(currentEvents);
+    } catch (err) {
+      eventsList.innerHTML = `<div class="no-events">Error: ${err.message}</div>`;
+    }
+  }
+
+  function renderEvents(events) {
+    eventCount.textContent = events.length;
+    if (!events.length) {
+      eventsList.innerHTML = '<div class="no-events">Sin eventos disponibles.</div>';
+      return;
+    }
+    eventsList.innerHTML = events.map((ev, i) => {
+      const comp = ev.competitions?.[0];
+      const competitors = comp?.competitors || [];
+      const away = competitors.find(c => c.homeAway === 'away') || competitors[0] || {};
+      const home = competitors.find(c => c.homeAway === 'home') || competitors[1] || {};
+      const awayName = away.team?.shortDisplayName || away.team?.displayName || 'Away';
+      const homeName = home.team?.shortDisplayName || home.team?.displayName || 'Home';
+      const status = comp?.status?.type?.description || 'Scheduled';
+      const isLive = (comp?.status?.type?.state || '') === 'in';
+      const awayScore = away.score ?? null;
+      const homeScore = home.score ?? null;
+      const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
+
+      return `<div class="event-card" data-idx="${i}">
+        <div class="ev-teams">${awayName} vs ${homeName}</div>
+        <div class="ev-status ${isLive ? 'live' : ''}">${isLive ? '● EN VIVO — ' : ''}${status}</div>
+        ${awayScore !== null ? `<div class="ev-score">${awayScore} – ${homeScore}</div>` : ''}
+        <div class="ev-odds">
+          <span class="odd-pill">${awayName} ${odds.away}</span>
+          <span class="odd-pill">Draw ${odds.draw}</span>
+          <span class="odd-pill">${homeName} ${odds.home}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    eventsList.querySelectorAll('.event-card').forEach(card => {
+      card.addEventListener('click', () => {
+        eventsList.querySelectorAll('.event-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedEvent = currentEvents[+card.dataset.idx];
+        chatInput.placeholder = `Pregunta sobre este partido…`;
+        chatInput.focus();
+      });
+    });
+  }
+
+  // ── Chat ──
+  function addMessage(role, contentHTML, meta = '') {
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.innerHTML = `<div class="msg-bubble">${contentHTML}</div>
+      ${meta ? `<div class="msg-meta">${meta}</div>` : ''}`;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function renderBetResult(result) {
+    if (!result) return '<span class="no-data-msg">Sin resultado</span>';
+    let html = `<div class="bet-summary">${escHtml(result.summary)}</div>`;
+    if (result.bets?.length) {
+      html += '<div class="bet-cards">';
+      result.bets.forEach(bet => {
+        html += `<div class="bet-card">
+          <div class="bet-market">${escHtml(bet.market)}</div>
+          <div class="bet-selection">▶ ${escHtml(bet.selection)}</div>
+          <div class="bet-reason">${escHtml(bet.reason)}</div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function sendMessage() {
+    const query = chatInput.value.trim();
+    if (!query || isLoading) return;
+
+    isLoading = true;
+    sendBtn.disabled = true;
+    chatInput.value = '';
+
+    addMessage('user', escHtml(query));
+
+    const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Claude está pensando…</span>');
+
+    const eventsToSend = selectedEvent
+      ? [selectedEvent]
+      : currentEvents.slice(0, 3);
+
+    try {
+      const res = await fetch('/api/assistant/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userQuery: query, events: eventsToSend }),
+      });
+
+      const data = await res.json();
+
+      // Update chat message
+      loadingMsg.querySelector('.msg-bubble').innerHTML = renderBetResult(data.result);
+      const latency = data.log?.latency_ms ?? '—';
+      const tokens = data.log ? `${data.log.prompt_size_tokens + data.log.response_size_tokens} tokens` : '';
+      loadingMsg.innerHTML += `<div class="msg-meta">Claude · ${latency}ms · ${tokens}</div>`;
+
+      // Update prompt builder panel
+      if (data.debug?.sections) {
+        const s = data.debug.sections;
+        document.getElementById('sec-system').textContent  = s.systemPrompt || '';
+        document.getElementById('sec-context').textContent = s.contextData  || '';
+        document.getElementById('sec-user').textContent    = s.userInput    || '';
+        document.getElementById('sec-output').textContent  = s.outputFormat || '';
+        document.getElementById('prompt-version').textContent = data.debug.version || 'v1';
+        promptPH.style.display  = 'none';
+        promptSecs.style.display = '';
+      }
+
+      // Update metrics panel
+      if (data.log) {
+        const l = data.log;
+        document.getElementById('m-input').textContent   = l.prompt_size_tokens ?? '—';
+        document.getElementById('m-output').textContent  = l.response_size_tokens ?? '—';
+        document.getElementById('m-cache').textContent   = l.cache_read_tokens ?? '0';
+        document.getElementById('m-latency').textContent = l.latency_ms ?? '—';
+
+        const logEl = document.getElementById('log-entry');
+        logEl.className = `log-entry ${l.success ? 'success' : 'fail'}`;
+        logEl.innerHTML = Object.entries(l).map(([k, v]) =>
+          `<span class="log-key">${k}</span>: <span class="log-val">${JSON.stringify(v)}</span>`
+        ).join('\n');
+
+        metricsPH.style.display   = 'none';
+        metricsC.style.display    = '';
+      }
+
+    } catch (err) {
+      loadingMsg.querySelector('.msg-bubble').innerHTML =
+        `<span style="color:var(--red)">Error: ${escHtml(err.message)}</span>`;
+    } finally {
+      isLoading = false;
+      sendBtn.disabled = false;
+      chatInput.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+  chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
+  // ── Init ──
+  loadEvents(currentSport);
+</script>
+</body>
+</html>

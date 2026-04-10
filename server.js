@@ -161,6 +161,202 @@ app.post("/chat", async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+//  SPEC-COMPLIANT PROMPT ENGINEERING SYSTEM  (AI PM Demo)
+//  Spec: AI Betting Assistant — Prompt Design & Generation v1
+// ════════════════════════════════════════════════════════════════
+
+// 3.2 System Prompt — versioned
+const SYSTEM_PROMPT = {
+  version: "v1",
+  text: `You are a sports betting assistant.
+
+Rules:
+- Only use the data provided in the context
+- Do not invent events, odds, or results
+- Be concise and actionable
+- Suggest bets only when there is reasonable confidence
+- Never guarantee outcomes
+- If data is insufficient, say so clearly`,
+};
+
+// Demo odds table (ESPN doesn't expose real odds)
+const DEMO_MARKETS = [
+  { away: "+120", draw: "+280", home: "-150" },
+  { away: "-110", draw: "+300", home: "+100" },
+  { away: "+200", draw: "+250", home: "-230" },
+];
+
+// 3.3 Context Formatter — ESPN events → human-readable text
+// PM Decision: compressed + readable → fewer tokens, better output
+function formatContext(events = []) {
+  if (!events.length) return "No events available.";
+
+  const top = events.slice(0, 3); // max 3 events per spec
+  const lines = ["Live/Upcoming Events:"];
+
+  top.forEach((ev, i) => {
+    const comp = ev.competitions?.[0];
+    const competitors = comp?.competitors || [];
+    const away = competitors.find((c) => c.homeAway === "away");
+    const home = competitors.find((c) => c.homeAway === "home");
+    const awayName = away?.team?.displayName || "Away Team";
+    const homeName = home?.team?.displayName || "Home Team";
+    const status = comp?.status?.type?.description || "Scheduled";
+    const detail = comp?.status?.type?.shortDetail || "";
+    const awayScore = away?.score ?? null;
+    const homeScore = home?.score ?? null;
+
+    let line = `- ${awayName} vs ${homeName} (${status}`;
+    if (detail) line += `, ${detail}`;
+    if (awayScore !== null && homeScore !== null)
+      line += `, Score: ${awayScore}-${homeScore}`;
+    line += ")";
+    lines.push(line);
+
+    const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
+    lines.push(`  Markets:`);
+    lines.push(
+      `  - Match Winner: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`
+    );
+  });
+
+  return lines.join("\n");
+}
+
+// 4. Prompt Builder — merges all 4 sections per spec
+// Constraints: ~800 token context, ~1200 token total
+function buildPrompt(userQuery, formattedContext) {
+  const outputInstruction = `Return your answer strictly in the following JSON format:
+{
+  "summary": "short explanation",
+  "bets": [
+    {
+      "market": "market name",
+      "selection": "team or option",
+      "reason": "justification"
+    }
+  ]
+}
+
+If data is insufficient, return: {"summary": "Insufficient data to recommend", "bets": []}`;
+
+  return {
+    system: SYSTEM_PROMPT.text,
+    userMessage: `Context:\n${formattedContext}\n\nUser question: ${userQuery}\n\n${outputInstruction}`,
+    sections: {
+      systemPrompt: SYSTEM_PROMPT.text,
+      contextData: formattedContext,
+      userInput: userQuery,
+      outputFormat: outputInstruction,
+    },
+    version: SYSTEM_PROMPT.version,
+  };
+}
+
+// 6.2 Output Validator — must be valid JSON with required fields
+function validateOutput(text) {
+  try {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("No JSON block found in response");
+    const parsed = JSON.parse(match[0]);
+    if (typeof parsed.summary !== "string") throw new Error("Missing summary");
+    if (!Array.isArray(parsed.bets)) throw new Error("Missing bets array");
+    for (const bet of parsed.bets) {
+      if (!bet.market || !bet.selection || !bet.reason)
+        throw new Error("Invalid bet structure: missing market/selection/reason");
+    }
+    return { valid: true, data: parsed };
+  } catch (err) {
+    return { valid: false, error: err.message };
+  }
+}
+
+// POST /api/assistant/chat
+// Body: { userQuery: string, events: ESPN_Event[] }
+// Returns: { result, raw, log, debug }
+app.post("/api/assistant/chat", async (req, res) => {
+  const { userQuery, events = [] } = req.body;
+  if (!userQuery?.trim())
+    return res.status(400).json({ error: "userQuery is required" });
+
+  const startTime = Date.now();
+  const formattedContext = formatContext(events);
+  const { system, userMessage, sections, version } = buildPrompt(
+    userQuery,
+    formattedContext
+  );
+
+  let lastError = null;
+
+  // 6.3 Fallback: retry once on invalid output
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      // Prompt caching on the static system prompt (saves tokens on repeated calls)
+      const response = await client.messages.create({
+        model: "claude-opus-4-6",
+        max_tokens: 1024,
+        system: [
+          {
+            type: "text",
+            text: system,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const latency = Date.now() - startTime;
+      const rawText =
+        response.content.find((b) => b.type === "text")?.text || "";
+      const validation = validateOutput(rawText);
+
+      // 8. Logging
+      const log = {
+        prompt_size_tokens: response.usage.input_tokens,
+        response_size_tokens: response.usage.output_tokens,
+        cache_read_tokens: response.usage.cache_read_input_tokens || 0,
+        cache_write_tokens: response.usage.cache_creation_input_tokens || 0,
+        model: response.model,
+        latency_ms: latency,
+        success: validation.valid,
+        prompt_version: version,
+        attempt,
+      };
+
+      console.log("[ASSISTANT]", JSON.stringify(log));
+
+      // retry if invalid and we have attempts left
+      if (!validation.valid && attempt < 2) {
+        lastError = validation.error;
+        continue;
+      }
+
+      return res.json({
+        result: validation.valid
+          ? validation.data
+          : {
+              summary:
+                "Could not generate a valid recommendation. Please try again.",
+              bets: [],
+            },
+        raw: rawText,
+        log,
+        // Debug payload — exposes the 4 prompt sections for the AI PM demo UI
+        debug: { sections, version },
+      });
+    } catch (err) {
+      lastError = err.message;
+      if (attempt >= 2) break;
+    }
+  }
+
+  return res.status(500).json({
+    error: "Failed after 2 attempts",
+    detail: lastError,
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Betting assistant running at http://localhost:${PORT}`);
