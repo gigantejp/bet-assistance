@@ -35,21 +35,35 @@
     .logo { font-size: 1.1rem; font-weight: 800; color: var(--accent); letter-spacing: .3px; }
     .badge { font-size: .7rem; background: #0e2a40; border: 1px solid #1a4060; color: var(--accent); padding: 3px 8px; border-radius: 999px; letter-spacing: .05em; }
     /* sport select in header */
-    .sport-select-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-    .sport-select-wrap label { font-size: .78rem; color: var(--muted); }
-    #sport-select {
-      background: #0e2a40;
-      border: 1px solid var(--accent);
-      color: var(--text);
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: .84rem;
-      cursor: pointer;
-      outline: none;
-      min-width: 180px;
+    .sport-select-wrap { display: none; }
+
+    /* ── Sport nav bar ── */
+    .sport-nav {
+      background: #060f1a;
+      border-bottom: 1px solid var(--line);
+      padding: 0 16px;
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
     }
-    #sport-select optgroup { color: var(--muted); font-size: .75rem; }
-    #sport-select option { background: #0d1e2e; color: var(--text); }
+    .sport-nav::-webkit-scrollbar { display: none; }
+    .nav-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      padding: 9px 13px;
+      font-size: .78rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color .15s, border-color .15s;
+      letter-spacing: .02em;
+    }
+    .nav-btn:hover { color: var(--text); }
+    .nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     /* ── Three-panel layout ── */
     .workspace {
@@ -93,6 +107,8 @@
     }
     .event-card:hover { border-color: #2a5070; }
     .event-card.selected { border-color: var(--accent); background: #0f2640; }
+    .ev-league { font-size: .68rem; color: var(--muted); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+    .ev-league-icon { font-size: .82rem; }
     .ev-teams { font-weight: 700; font-size: .88rem; line-height: 1.4; margin-bottom: 5px; }
     .ev-status { font-size: .74rem; color: var(--muted); }
     .ev-status.live { color: var(--green); }
@@ -317,63 +333,10 @@
   <span class="logo">⚡ AI Betting Assistant</span>
   <span class="badge">Prompt Engineering Demo</span>
   <span id="server-status" style="font-size:.74rem;color:var(--muted)">Checking...</span>
-  <div class="sport-select-wrap">
-    <label for="sport-select">Sport:</label>
-    <select id="sport-select">
-      <optgroup label="🏀 Basketball">
-        <option value="nba" selected>NBA</option>
-        <option value="wnba">WNBA</option>
-        <option value="ncaam">NCAA Men's Basketball</option>
-      </optgroup>
-      <optgroup label="🏈 Football">
-        <option value="nfl">NFL</option>
-        <option value="ncaaf">College Football (CFB)</option>
-      </optgroup>
-      <optgroup label="⚾ Baseball">
-        <option value="mlb">MLB</option>
-      </optgroup>
-      <optgroup label="🏒 Hockey">
-        <option value="nhl">NHL</option>
-      </optgroup>
-      <optgroup label="⚽ Soccer">
-        <option value="epl">Premier League</option>
-        <option value="laliga">La Liga</option>
-        <option value="bundesliga">Bundesliga</option>
-        <option value="seriea">Serie A</option>
-        <option value="ligue1">Ligue 1</option>
-        <option value="ucl">UEFA Champions League</option>
-        <option value="uel">UEFA Europa League</option>
-        <option value="mls">MLS</option>
-      </optgroup>
-      <optgroup label="🥊 MMA">
-        <option value="ufc">UFC</option>
-        <option value="bellator">Bellator</option>
-      </optgroup>
-      <optgroup label="🎾 Tennis">
-        <option value="atp">ATP</option>
-        <option value="wta">WTA</option>
-      </optgroup>
-      <optgroup label="⛳ Golf">
-        <option value="pga">PGA Tour</option>
-        <option value="lpga">LPGA Tour</option>
-        <option value="liv">LIV Golf</option>
-      </optgroup>
-      <optgroup label="🏎️ Racing">
-        <option value="f1">Formula 1</option>
-        <option value="nascar">NASCAR</option>
-        <option value="indycar">IndyCar</option>
-      </optgroup>
-      <optgroup label="🏏 Cricket">
-        <option value="ipl">IPL</option>
-        <option value="icct20">ICC T20</option>
-      </optgroup>
-      <optgroup label="🥍 Lacrosse">
-        <option value="pll">PLL</option>
-        <option value="nll">NLL</option>
-      </optgroup>
-    </select>
-  </div>
 </header>
+
+<!-- ── Sport nav ── -->
+<nav class="sport-nav" id="sport-nav"></nav>
 
 <!-- ── Workspace ── -->
 <div class="workspace">
@@ -517,13 +480,59 @@
     });
   });
 
-  // ── Sport selector ──
-  document.getElementById('sport-select').addEventListener('change', e => {
-    currentSport = e.target.value;
-    selectedEvent = null;
-    chatInput.placeholder = 'Ask about the selected game…';
-    loadEvents(currentSport);
-  });
+  // ── Sport nav ──
+  const SPORTS = [
+    { key: 'nba',        icon: '🏀', label: 'NBA' },
+    { key: 'wnba',       icon: '🏀', label: 'WNBA' },
+    { key: 'ncaam',      icon: '🏀', label: 'NCAA Bball' },
+    { key: 'nfl',        icon: '🏈', label: 'NFL' },
+    { key: 'ncaaf',      icon: '🏈', label: 'CFB' },
+    { key: 'mlb',        icon: '⚾', label: 'MLB' },
+    { key: 'nhl',        icon: '🏒', label: 'NHL' },
+    { key: 'epl',        icon: '⚽', label: 'EPL' },
+    { key: 'laliga',     icon: '⚽', label: 'La Liga' },
+    { key: 'bundesliga', icon: '⚽', label: 'Bundesliga' },
+    { key: 'seriea',     icon: '⚽', label: 'Serie A' },
+    { key: 'ligue1',     icon: '⚽', label: 'Ligue 1' },
+    { key: 'ucl',        icon: '⚽', label: 'UCL' },
+    { key: 'uel',        icon: '⚽', label: 'UEL' },
+    { key: 'mls',        icon: '⚽', label: 'MLS' },
+    { key: 'ufc',        icon: '🥊', label: 'UFC' },
+    { key: 'bellator',   icon: '🥊', label: 'Bellator' },
+    { key: 'atp',        icon: '🎾', label: 'ATP' },
+    { key: 'wta',        icon: '🎾', label: 'WTA' },
+    { key: 'pga',        icon: '⛳', label: 'PGA' },
+    { key: 'lpga',       icon: '⛳', label: 'LPGA' },
+    { key: 'liv',        icon: '⛳', label: 'LIV Golf' },
+    { key: 'f1',         icon: '🏎️', label: 'F1' },
+    { key: 'nascar',     icon: '🏎️', label: 'NASCAR' },
+    { key: 'indycar',    icon: '🏎️', label: 'IndyCar' },
+    { key: 'ipl',        icon: '🏏', label: 'IPL' },
+    { key: 'icct20',     icon: '🏏', label: 'ICC T20' },
+    { key: 'pll',        icon: '🥍', label: 'PLL' },
+    { key: 'nll',        icon: '🥍', label: 'NLL' },
+  ];
+
+  const sportNav = document.getElementById('sport-nav');
+
+  function renderSportNav() {
+    sportNav.innerHTML = SPORTS.map(s =>
+      `<button class="nav-btn${s.key === currentSport ? ' active' : ''}" data-sport="${s.key}">${s.icon} ${s.label}</button>`
+    ).join('');
+    sportNav.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentSport = btn.dataset.sport;
+        selectedEvent = null;
+        chatInput.placeholder = 'Ask about the selected game…';
+        renderSportNav();
+        // scroll active button into view
+        btn.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+        loadEvents(currentSport);
+      });
+    });
+  }
+
+  renderSportNav();
 
   // ESPN direct endpoints (fallback when server is not running)
   const ESPN_DIRECT = {
@@ -576,11 +585,13 @@
   }
 
   // ── Load ESPN events ──
+  let currentLeagueLabel = '';
+
   async function loadEvents(sport) {
     eventsList.innerHTML = '<div class="no-events loading-spinner">Loading...</div>';
     eventCount.textContent = '—';
+    const sportMeta = SPORTS.find(s => s.key === sport) || { icon: '🏟️', label: sport.toUpperCase() };
     try {
-      // Intenta primero el proxy del servidor, luego ESPN directo como fallback
       let data;
       try {
         const res = await fetch(`/api/scoreboard/${sport}`, { signal: AbortSignal.timeout(3000) });
@@ -589,14 +600,18 @@
         const res = await fetch(ESPN_DIRECT[sport], { cache: 'no-store' });
         data = await res.json();
       }
+      // resolve league name from ESPN or fall back to nav label
+      const espnLeague = data.leagues?.[0]?.name || data.leagues?.[0]?.abbreviation || '';
+      currentLeagueLabel = espnLeague || sportMeta.label;
       currentEvents = data.events || [];
-      renderEvents(currentEvents);
+      renderEvents(currentEvents, sportMeta);
     } catch (err) {
       eventsList.innerHTML = `<div class="no-events">Error loading events: ${escHtml(err.message)}</div>`;
     }
   }
 
-  function renderEvents(events) {
+  function renderEvents(events, sportMeta) {
+    sportMeta = sportMeta || SPORTS.find(s => s.key === currentSport) || { icon: '🏟️', label: currentSport.toUpperCase() };
     eventCount.textContent = events.length;
     if (!events.length) {
       eventsList.innerHTML = '<div class="no-events">No events available.</div>';
@@ -614,10 +629,12 @@
       const awayScore = away.score ?? null;
       const homeScore = home.score ?? null;
       const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
+      const leagueName = escHtml(currentLeagueLabel || sportMeta.label);
 
       return `<div class="event-card" data-idx="${i}">
+        <div class="ev-league"><span class="ev-league-icon">${sportMeta.icon}</span>${leagueName}</div>
         <div class="ev-teams">${awayName} vs ${homeName}</div>
-        <div class="ev-status ${isLive ? 'live' : ''}">${isLive ? '● EN VIVO — ' : ''}${status}</div>
+        <div class="ev-status ${isLive ? 'live' : ''}">${isLive ? '● LIVE — ' : ''}${status}</div>
         ${awayScore !== null ? `<div class="ev-score">${awayScore} – ${homeScore}</div>` : ''}
         <div class="ev-odds">
           <span class="odd-pill">${awayName} ${odds.away}</span>
@@ -692,7 +709,7 @@
 
     addMessage('user', escHtml(query));
 
-    const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Claude is thinking…</span>');
+    const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Bet Assistance is thinking…</span>');
 
     const eventsToSend = selectedEvent
       ? [selectedEvent]
