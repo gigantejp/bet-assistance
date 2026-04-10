@@ -249,6 +249,27 @@
     const topPicks = document.getElementById('top-picks');
     const eventsTable = document.getElementById('events-table');
     const refreshBtn = document.getElementById('refresh-btn');
+    const espnEndpoints = {
+      nba: [
+        'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+      ],
+      nfl: [
+        'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+      ],
+      mlb: [
+        'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+      ],
+      nhl: [
+        'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+      ],
+      soccer: [
+        'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
+        'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
+      ],
+      ufc: [
+        'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
+      ],
+    };
 
     function renderMenu() {
       menu.innerHTML = sports.map(s => `
@@ -287,14 +308,29 @@
       return values[index % values.length];
     }
 
+    async function fetchScoreboard(sport) {
+      const endpointCandidates = espnEndpoints[sport];
+      if (!endpointCandidates?.length) throw new Error('Deporte no soportado');
+
+      for (const endpoint of endpointCandidates) {
+        try {
+          const remoteResponse = await fetch(endpoint, { cache: 'no-store' });
+          if (!remoteResponse.ok) continue;
+          return await remoteResponse.json();
+        } catch (_) {
+          // Intenta el siguiente endpoint alternativo.
+        }
+      }
+
+      throw new Error('No se pudo cargar ESPN');
+    }
+
     async function loadSport() {
       topPicks.innerHTML = '<div class="loading">Cargando Top Picks...</div>';
       eventsTable.innerHTML = '<div class="loading">Cargando eventos...</div>';
 
       try {
-        const res = await fetch(`/api/scoreboard/${currentSport}`);
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const data = await res.json();
+        const data = await fetchScoreboard(currentSport);
         const events = data.events || [];
 
         if (!events.length) {
