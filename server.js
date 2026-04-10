@@ -98,6 +98,26 @@ RULES:
 User question: "${userQuery}"`;
 }
 
+
+
+app.get("/api/scoreboard/:sport", async (req, res) => {
+  const sport = (req.params.sport || "").toLowerCase();
+  if (!ESPN_ENDPOINTS[sport]) {
+    return res.status(400).json({ error: `Unsupported sport: ${sport}` });
+  }
+
+  const data = await espnFetch(sport);
+  if (!data) {
+    return res.status(502).json({ error: "Failed to fetch ESPN data" });
+  }
+
+  return res.json({
+    sport,
+    leagues: data.leagues || [],
+    events: data.events || [],
+    fetchedAt: new Date().toISOString(),
+  });
+});
 async function callClaude(prompt, history = []) {
   return await client.messages.stream({
     model: "claude-opus-4-6",
