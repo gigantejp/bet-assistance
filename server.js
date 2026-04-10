@@ -11,13 +11,46 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ESPN public APIs — no auth, no Cloudflare
 const ESPN_ENDPOINTS = {
-  nba:    "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
-  mlb:    "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
-  nhl:    "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
-  ufc:    "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
-  soccer: "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
-  nfl:    "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
-  golf:   "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard",
+  // Basketball
+  nba:        "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  wnba:       "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard",
+  ncaam:      "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+  // Football
+  nfl:        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  ncaaf:      "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80",
+  // Baseball
+  mlb:        "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  // Hockey
+  nhl:        "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  // Soccer
+  ucl:        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
+  epl:        "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  laliga:     "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  seriea:     "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  ligue1:     "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  mls:        "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+  uel:        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard",
+  // MMA
+  ufc:        "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
+  bellator:   "https://site.api.espn.com/apis/site/v2/sports/mma/bellator/scoreboard",
+  // Tennis
+  atp:        "https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard",
+  wta:        "https://site.api.espn.com/apis/site/v2/sports/tennis/wta/scoreboard",
+  // Golf
+  pga:        "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard",
+  lpga:       "https://site.api.espn.com/apis/site/v2/sports/golf/lpga/scoreboard",
+  liv:        "https://site.api.espn.com/apis/site/v2/sports/golf/liv/scoreboard",
+  // Racing
+  f1:         "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard",
+  nascar:     "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard",
+  indycar:    "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard",
+  // Cricket
+  ipl:        "https://site.api.espn.com/apis/site/v2/sports/cricket/ipl/scoreboard",
+  icct20:     "https://site.api.espn.com/apis/site/v2/sports/cricket/icc.t20/scoreboard",
+  // Lacrosse
+  pll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/pll/scoreboard",
+  nll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard",
 };
 
 // SportsBetting.ag links — for directing users to bet
@@ -49,16 +82,35 @@ async function espnFetch(key) {
 
 function detectIntent(q) {
   q = q.toLowerCase();
-  if (/nba|basketball|lakers|celtics|warriors|knicks|bulls|heat|nets/.test(q)) return "nba";
-  if (/mlb|baseball|yankees|dodgers|mets|cubs|braves/.test(q)) return "mlb";
-  if (/nhl|hockey|rangers|bruins|leafs|penguins/.test(q)) return "nhl";
-  if (/ufc|mma|fight|fighter|pelea/.test(q)) return "ufc";
-  if (/soccer|football|uefa|champions|mls|premier|liga|futbol|fútbol/.test(q)) return "soccer";
-  if (/tennis|atp|wta/.test(q)) return "tennis";
-  if (/nfl|american football|patriots|cowboys|eagles/.test(q)) return "nfl";
-  if (/golf|pga|masters/.test(q)) return "golf";
-  if (/boost|promo|booster|daily|promocion|promoción/.test(q)) return "boost";
-  return "nba"; // default to NBA as most popular
+  if (/\bnba\b|lakers|celtics|warriors|knicks|bulls|heat|nets|bucks/.test(q)) return "nba";
+  if (/\bwnba\b|fever|liberty|sparks|sky\b/.test(q)) return "wnba";
+  if (/ncaam|march madness|college basketball/.test(q)) return "ncaam";
+  if (/\bnfl\b|patriots|cowboys|eagles|chiefs|packers|49ers/.test(q)) return "nfl";
+  if (/ncaaf|college football|cfb/.test(q)) return "ncaaf";
+  if (/\bmlb\b|baseball|yankees|dodgers|mets|cubs|braves|red sox/.test(q)) return "mlb";
+  if (/\bnhl\b|hockey|rangers|bruins|leafs|penguins|canadiens/.test(q)) return "nhl";
+  if (/\bufc\b|mma|fight|octagon/.test(q)) return "ufc";
+  if (/bellator/.test(q)) return "bellator";
+  if (/premier league|epl|arsenal|chelsea|liverpool|man city|man utd/.test(q)) return "epl";
+  if (/la liga|laliga|real madrid|barcelona|atletico/.test(q)) return "laliga";
+  if (/bundesliga|bayern|dortmund/.test(q)) return "bundesliga";
+  if (/serie a|juventus|inter milan|ac milan/.test(q)) return "seriea";
+  if (/ligue 1|psg|paris saint/.test(q)) return "ligue1";
+  if (/\bmls\b|sounders|galaxy|red bulls/.test(q)) return "mls";
+  if (/champions league|ucl/.test(q)) return "ucl";
+  if (/europa league|uel/.test(q)) return "uel";
+  if (/\batp\b|tennis|djokovic|federer|nadal|alcaraz/.test(q)) return "atp";
+  if (/\bwta\b|serena|swiatek|sabalenka/.test(q)) return "wta";
+  if (/\bpga\b|golf|masters|open|tiger woods|mcilroy/.test(q)) return "pga";
+  if (/\blpga\b/.test(q)) return "lpga";
+  if (/\bliv\b golf/.test(q)) return "liv";
+  if (/formula 1|\bf1\b|ferrari|mercedes|red bull racing|hamilton|verstappen/.test(q)) return "f1";
+  if (/nascar/.test(q)) return "nascar";
+  if (/indycar|indy 500/.test(q)) return "indycar";
+  if (/\bipl\b|cricket/.test(q)) return "ipl";
+  if (/\bpll\b|lacrosse/.test(q)) return "pll";
+  if (/\bnll\b/.test(q)) return "nll";
+  return "nba";
 }
 
 function parseESPNGames(data, intent) {
@@ -79,19 +131,15 @@ function buildPrompt(intent, espnData, userQuery) {
     ? `UPCOMING/LIVE GAMES (${intent.toUpperCase()}) from ESPN:\n${gamesText}`
     : `No live game data available for ${intent} right now.`;
 
-  return `You are a helpful sports betting assistant for SportsBetting.ag.
-Respond in the same language the user writes in (Spanish or English).
+  return `You are a helpful sports betting assistant.
 
 ${dataSection}
 
-BETTING LINK for ${intent.toUpperCase()}: ${sbUrl}
-
 RULES:
 - Use the game data above to discuss matchups, trends, and betting angles
-- You do NOT have live odds — tell the user to check SportsBetting.ag for current lines
-- Always end with: "Apuesta aquí / Bet here: ${sbUrl}"
-- Explain American odds simply when relevant: +150 = ganás $150 por cada $100 apostado
-- If no games are available, suggest checking the link directly
+- You do NOT have live odds — tell the user to check the sportsbook for current lines
+- Explain American odds when relevant: +150 means you win $150 on a $100 bet
+- If no games are available, say so clearly
 - Keep responses concise (3-5 sentences)
 - End with one follow-up question
 
@@ -177,6 +225,7 @@ Rules:
 - Be concise and actionable
 - Suggest bets only when there is reasonable confidence
 - Never guarantee outcomes
+- Always respond in English
 - If data is insufficient, say so clearly`,
 };
 

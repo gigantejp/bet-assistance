@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -34,10 +34,22 @@
     }
     .logo { font-size: 1.1rem; font-weight: 800; color: var(--accent); letter-spacing: .3px; }
     .badge { font-size: .7rem; background: #0e2a40; border: 1px solid #1a4060; color: var(--accent); padding: 3px 8px; border-radius: 999px; letter-spacing: .05em; }
-    .sport-tabs { display: flex; gap: 6px; margin-left: auto; }
-    .sport-tab { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: .82rem; transition: all .15s; }
-    .sport-tab:hover { border-color: var(--accent); color: var(--accent); }
-    .sport-tab.active { background: #0e2a40; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    /* sport select in header */
+    .sport-select-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .sport-select-wrap label { font-size: .78rem; color: var(--muted); }
+    #sport-select {
+      background: #0e2a40;
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: .84rem;
+      cursor: pointer;
+      outline: none;
+      min-width: 180px;
+    }
+    #sport-select optgroup { color: var(--muted); font-size: .75rem; }
+    #sport-select option { background: #0d1e2e; color: var(--text); }
 
     /* ── Three-panel layout ── */
     .workspace {
@@ -281,26 +293,74 @@
 
 <!-- ── Server banner ── -->
 <div id="server-banner">
-  <strong>⚠ Servidor requerido</strong>
-  <span>Para usar el asistente IA, ejecuta localmente:</span>
+  <strong>⚠ Server required</strong>
+  <span>To use the AI assistant, run locally:</span>
   <span class="banner-code">npm install && node server.js</span>
-  <span>→ abre</span>
+  <span>→ open</span>
   <span class="banner-code">http://localhost:3000/assistant.html</span>
-  <span>(Los eventos ESPN sí cargan sin servidor)</span>
+  <span>(ESPN events load without the server)</span>
 </div>
 
 <!-- ── Header ── -->
 <header>
   <span class="logo">⚡ AI Betting Assistant</span>
   <span class="badge">Prompt Engineering Demo</span>
-  <span id="server-status" style="font-size:.74rem;color:var(--muted)">Verificando...</span>
-  <div class="sport-tabs" id="sport-tabs">
-    <button class="sport-tab active" data-sport="nba">🏀 NBA</button>
-    <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
-    <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
-    <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
-    <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
-    <button class="sport-tab" data-sport="ufc">🥊 UFC</button>
+  <span id="server-status" style="font-size:.74rem;color:var(--muted)">Checking...</span>
+  <div class="sport-select-wrap">
+    <label for="sport-select">Sport:</label>
+    <select id="sport-select">
+      <optgroup label="🏀 Basketball">
+        <option value="nba" selected>NBA</option>
+        <option value="wnba">WNBA</option>
+        <option value="ncaam">NCAA Men's Basketball</option>
+      </optgroup>
+      <optgroup label="🏈 Football">
+        <option value="nfl">NFL</option>
+        <option value="ncaaf">College Football (CFB)</option>
+      </optgroup>
+      <optgroup label="⚾ Baseball">
+        <option value="mlb">MLB</option>
+      </optgroup>
+      <optgroup label="🏒 Hockey">
+        <option value="nhl">NHL</option>
+      </optgroup>
+      <optgroup label="⚽ Soccer">
+        <option value="epl">Premier League</option>
+        <option value="laliga">La Liga</option>
+        <option value="bundesliga">Bundesliga</option>
+        <option value="seriea">Serie A</option>
+        <option value="ligue1">Ligue 1</option>
+        <option value="ucl">UEFA Champions League</option>
+        <option value="uel">UEFA Europa League</option>
+        <option value="mls">MLS</option>
+      </optgroup>
+      <optgroup label="🥊 MMA">
+        <option value="ufc">UFC</option>
+        <option value="bellator">Bellator</option>
+      </optgroup>
+      <optgroup label="🎾 Tennis">
+        <option value="atp">ATP</option>
+        <option value="wta">WTA</option>
+      </optgroup>
+      <optgroup label="⛳ Golf">
+        <option value="pga">PGA Tour</option>
+        <option value="lpga">LPGA Tour</option>
+        <option value="liv">LIV Golf</option>
+      </optgroup>
+      <optgroup label="🏎️ Racing">
+        <option value="f1">Formula 1</option>
+        <option value="nascar">NASCAR</option>
+        <option value="indycar">IndyCar</option>
+      </optgroup>
+      <optgroup label="🏏 Cricket">
+        <option value="ipl">IPL</option>
+        <option value="icct20">ICC T20</option>
+      </optgroup>
+      <optgroup label="🥍 Lacrosse">
+        <option value="pll">PLL</option>
+        <option value="nll">NLL</option>
+      </optgroup>
+    </select>
   </div>
 </header>
 
@@ -314,7 +374,7 @@
       <span id="event-count" style="color:var(--accent);font-weight:700;">—</span>
     </div>
     <div class="events-list" id="events-list">
-      <div class="no-events">Cargando eventos ESPN...</div>
+      <div class="no-events">Loading ESPN events...</div>
     </div>
   </aside>
 
@@ -323,18 +383,19 @@
     <div class="messages" id="messages">
       <div class="msg assistant">
         <div class="msg-bubble">
-          <strong style="color:var(--accent)">Hola, soy tu asistente de apuestas.</strong><br/><br/>
-          Selecciona un deporte en el menú, elige un partido de la lista, y pregúntame algo. Por ejemplo:<br/><br/>
-          <em style="color:var(--muted)">"¿Cuál es la mejor apuesta para este partido?"<br/>
-          "¿Qué tan seguro es apostar al favorito?"</em>
+          <strong style="color:var(--accent)">Hey! I'm your AI betting assistant.</strong><br/><br/>
+          Select a sport from the dropdown, click a game on the left, then ask me anything. For example:<br/><br/>
+          <em style="color:var(--muted)">"What's the best bet for this game?"<br/>
+          "How safe is it to bet on the favorite?"<br/>
+          "Any value on the underdog today?"</em>
         </div>
-        <div class="msg-meta">Sistema</div>
+        <div class="msg-meta">System</div>
       </div>
     </div>
     <div class="chat-input-area">
       <input class="chat-input" id="chat-input" type="text"
-        placeholder="Pregunta sobre el partido seleccionado…" />
-      <button class="send-btn" id="send-btn">Enviar</button>
+        placeholder="Ask about the selected game…" />
+      <button class="send-btn" id="send-btn">Send</button>
     </div>
   </section>
 
@@ -349,8 +410,8 @@
       <!-- Prompt Builder tab -->
       <div id="tab-prompt">
         <div class="placeholder-msg" id="prompt-placeholder">
-          <strong>Cómo funciona el prompt</strong>
-          Haz una pregunta para ver cómo se construye el prompt en tiempo real siguiendo la arquitectura del spec.
+          <strong>How the prompt is built</strong>
+          Ask a question to see the 4-section prompt architecture assembled in real time.
         </div>
         <div id="prompt-sections" style="display:none">
           <div class="prompt-section">
@@ -379,7 +440,7 @@
       <div id="tab-metrics" style="display:none">
         <div class="placeholder-msg" id="metrics-placeholder">
           <strong>Token & Latency Metrics</strong>
-          Aquí aparecerán las métricas de cada llamada a la API de Claude.
+          Metrics for each Claude API call will appear here.
         </div>
         <div id="metrics-content" style="display:none">
           <div class="metrics-grid">
@@ -445,25 +506,45 @@
     });
   });
 
-  // ── Sport tabs ──
-  document.getElementById('sport-tabs').addEventListener('click', e => {
-    const btn = e.target.closest('.sport-tab');
-    if (!btn) return;
-    document.querySelectorAll('.sport-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentSport = btn.dataset.sport;
+  // ── Sport selector ──
+  document.getElementById('sport-select').addEventListener('change', e => {
+    currentSport = e.target.value;
     selectedEvent = null;
+    chatInput.placeholder = 'Ask about the selected game…';
     loadEvents(currentSport);
   });
 
-  // ESPN endpoints (fallback directo cuando no hay servidor)
+  // ESPN direct endpoints (fallback when server is not running)
   const ESPN_DIRECT = {
-    nba:    'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
-    nfl:    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
-    mlb:    'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
-    nhl:    'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
-    soccer: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
-    ufc:    'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
+    nba:        'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+    wnba:       'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard',
+    ncaam:      'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
+    nfl:        'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+    ncaaf:      'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80',
+    mlb:        'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
+    nhl:        'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
+    ucl:        'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
+    epl:        'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
+    laliga:     'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard',
+    bundesliga: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard',
+    seriea:     'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard',
+    ligue1:     'https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard',
+    mls:        'https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard',
+    uel:        'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard',
+    ufc:        'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
+    bellator:   'https://site.api.espn.com/apis/site/v2/sports/mma/bellator/scoreboard',
+    atp:        'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard',
+    wta:        'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/scoreboard',
+    pga:        'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard',
+    lpga:       'https://site.api.espn.com/apis/site/v2/sports/golf/lpga/scoreboard',
+    liv:        'https://site.api.espn.com/apis/site/v2/sports/golf/liv/scoreboard',
+    f1:         'https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard',
+    nascar:     'https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard',
+    indycar:    'https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard',
+    ipl:        'https://site.api.espn.com/apis/site/v2/sports/cricket/ipl/scoreboard',
+    icct20:     'https://site.api.espn.com/apis/site/v2/sports/cricket/icc.t20/scoreboard',
+    pll:        'https://site.api.espn.com/apis/site/v2/sports/lacrosse/pll/scoreboard',
+    nll:        'https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard',
   };
 
   // Verifica si el servidor Node.js está corriendo
@@ -485,7 +566,7 @@
 
   // ── Load ESPN events ──
   async function loadEvents(sport) {
-    eventsList.innerHTML = '<div class="no-events loading-spinner">Cargando...</div>';
+    eventsList.innerHTML = '<div class="no-events loading-spinner">Loading...</div>';
     eventCount.textContent = '—';
     try {
       // Intenta primero el proxy del servidor, luego ESPN directo como fallback
@@ -500,14 +581,14 @@
       currentEvents = data.events || [];
       renderEvents(currentEvents);
     } catch (err) {
-      eventsList.innerHTML = `<div class="no-events">Error cargando eventos: ${escHtml(err.message)}</div>`;
+      eventsList.innerHTML = `<div class="no-events">Error loading events: ${escHtml(err.message)}</div>`;
     }
   }
 
   function renderEvents(events) {
     eventCount.textContent = events.length;
     if (!events.length) {
-      eventsList.innerHTML = '<div class="no-events">Sin eventos disponibles.</div>';
+      eventsList.innerHTML = '<div class="no-events">No events available.</div>';
       return;
     }
     eventsList.innerHTML = events.map((ev, i) => {
@@ -540,7 +621,7 @@
         eventsList.querySelectorAll('.event-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
         selectedEvent = currentEvents[+card.dataset.idx];
-        chatInput.placeholder = `Pregunta sobre este partido…`;
+        chatInput.placeholder = `Ask about this game…`;
         chatInput.focus();
       });
     });
@@ -558,7 +639,7 @@
   }
 
   function renderBetResult(result) {
-    if (!result) return '<span class="no-data-msg">Sin resultado</span>';
+    if (!result) return '<span class="no-data-msg">No result</span>';
     let html = `<div class="bet-summary">${escHtml(result.summary)}</div>`;
     if (result.bets?.length) {
       html += '<div class="bet-cards">';
@@ -588,7 +669,7 @@
 
     addMessage('user', escHtml(query));
 
-    const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Claude está pensando…</span>');
+    const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Claude is thinking…</span>');
 
     const eventsToSend = selectedEvent
       ? [selectedEvent]
@@ -661,12 +742,12 @@
     if (!ok) {
       serverBanner.style.display = 'flex';
       sendBtn.disabled = true;
-      chatInput.placeholder = 'Servidor no disponible. Ver instrucciones arriba.';
-      serverStatus.textContent = '✗ Sin servidor';
+      chatInput.placeholder = 'Server unavailable. See setup instructions above.';
+      serverStatus.textContent = '✗ No server';
       serverStatus.style.color = 'var(--red)';
     } else {
       serverBanner.style.display = 'none';
-      serverStatus.textContent = '✓ Servidor activo';
+      serverStatus.textContent = '✓ Server active';
       serverStatus.style.color = 'var(--green)';
     }
   }
