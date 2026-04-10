@@ -296,14 +296,14 @@
     }
 
     async function fetchScoreboard(sport) {
-      const localResponse = await fetch(`/api/scoreboard/${sport}`);
-      if (localResponse.ok) return await localResponse.json();
-      if (localResponse.status !== 404) throw new Error(`Error ${localResponse.status}`);
-
       const espnUrl = espnEndpoints[sport];
       if (!espnUrl) throw new Error('Deporte no soportado');
 
-      const remoteResponse = await fetch(espnUrl);
+      if (!/^https?:\/\//i.test(espnUrl)) {
+        throw new Error(`URL inválida para ${sport}`);
+      }
+
+      const remoteResponse = await fetch(espnUrl, { cache: 'no-store' });
       if (!remoteResponse.ok) throw new Error(`Error ${remoteResponse.status}`);
 
       return await remoteResponse.json();
