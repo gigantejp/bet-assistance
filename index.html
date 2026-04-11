@@ -11,8 +11,10 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .logo{font-size:1.05rem;font-weight:800;color:var(--accent)}
 .badge{font-size:.68rem;background:#0e2a40;border:1px solid #1a4060;color:var(--accent);padding:2px 8px;border-radius:999px}
 .h-spacer{flex:1}
-#srv-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .3s}
+.srv-wrap{display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted);padding:3px 8px;border:1px solid var(--line);border-radius:6px}
+#srv-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s;flex-shrink:0}
 #srv-dot.on{background:var(--green)}#srv-dot.off{background:var(--warn)}
+#srv-lbl{white-space:nowrap}
 .h-btn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:6px 14px;border-radius:7px;font-size:.78rem;cursor:pointer}
 .h-btn:hover{border-color:var(--accent);color:var(--accent)}
 .h-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
@@ -138,7 +140,10 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 <header>
   <span class="logo">⚡ SportsBetting</span>
   <span class="badge">AI Demo</span>
-  <span id="srv-dot" title="Server status"></span>
+  <span class="srv-wrap" id="srv-wrap" title="Server status">
+    <span id="srv-dot"></span>
+    <span id="srv-lbl">Checking…</span>
+  </span>
   <span class="h-spacer"></span>
   <button class="h-btn">Log In</button>
   <button class="h-btn primary">Sign Up</button>
