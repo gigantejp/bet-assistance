@@ -320,7 +320,7 @@ async function createModelResponse({ model, system, userMessage, temperature, ma
       body: JSON.stringify({
         model,
         temperature,
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
         messages: [
           { role: "system", content: system },
           { role: "user", content: userMessage },
@@ -330,7 +330,12 @@ async function createModelResponse({ model, system, userMessage, temperature, ma
 
     if (!openAIResponse.ok) {
       const errorText = await openAIResponse.text();
-      throw new Error(`OpenAI API error (${openAIResponse.status}): ${errorText}`);
+      let detail = errorText;
+      try {
+        const parsed = JSON.parse(errorText);
+        detail = parsed?.error?.message || parsed?.message || errorText;
+      } catch {}
+      throw new Error(`OpenAI API error (${openAIResponse.status}): ${detail}`);
     }
 
     const response = await openAIResponse.json();
@@ -635,7 +640,7 @@ app.post("/api/assistant/chat", async (req, res) => {
     }
   }
 
-  return finish({ error: "Failed after 2 attempts", detail: lastError });
+  return finish({ error: lastError || "Failed after 2 attempts", detail: lastError });
 });
 
 const PORT = process.env.PORT || 3000;
