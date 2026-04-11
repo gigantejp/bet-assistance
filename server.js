@@ -124,7 +124,7 @@ function parseESPNGames(data, intent) {
   }).join("\n");
 }
 
-function buildPrompt(intent, espnData, userQuery) {
+function buildLegacyPrompt(intent, espnData, userQuery) {
   const sbUrl = SB_URLS[intent] || SB_URLS.default;
   const gamesText = parseESPNGames(espnData, intent);
   const dataSection = gamesText
@@ -186,7 +186,7 @@ app.post("/chat", async (req, res) => {
 
     console.log(`Intent: ${intent} | ESPN: ${espnData ? "OK" : "no data"}`);
 
-    const prompt = buildPrompt(intent, espnData, message);
+    const prompt = buildLegacyPrompt(intent, espnData, message);
     const stream = await callClaude(prompt, history);
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -262,12 +262,20 @@ const ALLOWED_MODELS = new Set([
 ]);
 const DEFAULT_MODEL = "claude-opus-4-6";
 
-// 3.3 Context Formatter — ESPN events → human-readable text
-// Sends the full event list (up to 15) so the AI can compare all matchups
-function formatContext(events = []) {
+function classifyIntent(query = "") {
+  const q = query.toLowerCase();
+  if (/best odds|value|best bet/.test(q)) return "BEST_ODD";
+  if (/best match|which game/.test(q)) return "BEST_MATCH";
+  if (/explain|what does this mean|what does .* mean/.test(q)) return "EXPLAIN";
+  return "GENERAL";
+}
+
+// 3.3 Context Formatter — ESPN events → concise human-readable text
+// Sends only top 3 events to reduce tokens
+function formatContext(events = [], intent = "GENERAL") {
   if (!events.length) return "No events available.";
 
-  const top = events.slice(0, 15); // full board context
+  const top = events.slice(0, 3);
   const lines = ["Live/Upcoming Events:"];
 
   top.forEach((ev, i) => {
@@ -290,44 +298,59 @@ function formatContext(events = []) {
     lines.push(line);
 
     const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
-    lines.push(`  Markets:`);
-    lines.push(
-      `  - Match Winner: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`
-    );
+    if (intent === "EXPLAIN") {
+      lines.push(
+        `  Example odds: Favorite ${homeName} ${odds.home}, Underdog ${awayName} ${odds.away}`
+      );
+    } else {
+      lines.push(
+        `  Match Winner: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`
+      );
+    }
   });
 
   return lines.join("\n");
 }
 
-// 4. Prompt Builder — merges all 4 sections per spec
-// Constraints: ~800 token context, ~1200 token total
-function buildPrompt(userQuery, formattedContext) {
-  const outputInstruction = `Return your answer strictly in the following JSON format:
+function buildPromptByIntent(intent, userQuery, formattedContext) {
+  const outputByIntent = {
+    BEST_ODD: `Return valid JSON only:
 {
-  "summary": "2-sentence analysis of the betting landscape",
-  "bets": [
-    {
-      "market": "market name (e.g. Match Winner, Spread, Over/Under)",
-      "selection": "team or option name",
-      "confidence": "high | medium | low",
-      "implied_probability": "e.g. 60%",
-      "reason": "grounded justification citing specific odds and data from the context",
-      "evidence": ["specific data point 1", "specific data point 2"]
-    }
-  ]
-}
+  "decision": "bet | pass",
+  "best_bet": "...",
+  "market": "...",
+  "odds": "...",
+  "reason": "...",
+  "confidence": "low | medium | high"
+}`,
+    BEST_MATCH: `Return valid JSON only:
+{
+  "best_match": "...",
+  "recommended_bet": "...",
+  "reason": "...",
+  "confidence": "low | medium | high"
+}`,
+    EXPLAIN: `Return valid JSON only:
+{
+  "explanation": "...",
+  "example": "...",
+  "tip": "..."
+}`,
+    GENERAL: `Return valid JSON only:
+{
+  "summary": "...",
+  "bets": []
+}`,
+  };
 
-Rules for the JSON:
-- confidence must be exactly one of: "high", "medium", or "low"
-- implied_probability must be a percentage string derived from the odds
-- evidence must be an array of strings, each citing a specific fact from the context
-- If data is insufficient for any recommendation, return: {"summary": "Insufficient data — only team names available. Check the sportsbook for current lines.", "bets": []}`;
+  const outputInstruction = outputByIntent[intent] || outputByIntent.GENERAL;
 
   return {
     system: SYSTEM_PROMPT.text,
-    userMessage: `Context:\n${formattedContext}\n\nUser question: ${userQuery}\n\n${outputInstruction}`,
+    userMessage: `Intent: ${intent}\nContext:\n${formattedContext}\n\nUser question: ${userQuery}\n\n${outputInstruction}`,
     sections: {
       systemPrompt: SYSTEM_PROMPT.text,
+      detectedIntent: intent,
       contextData: formattedContext,
       userInput: userQuery,
       outputFormat: outputInstruction,
@@ -336,28 +359,76 @@ Rules for the JSON:
   };
 }
 
-// 6.2 Output Validator — must be valid JSON with required fields (v2)
+// 6.2 Output Validator — intent-aware structured outputs
 const VALID_CONFIDENCE = new Set(["high", "medium", "low"]);
-function validateOutput(text) {
+function validateOutput(text, intent) {
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No JSON block found in response");
     const parsed = JSON.parse(match[0]);
-    if (typeof parsed.summary !== "string") throw new Error("Missing summary");
-    if (!Array.isArray(parsed.bets)) throw new Error("Missing bets array");
-    for (const bet of parsed.bets) {
-      if (!bet.market || !bet.selection || !bet.reason)
-        throw new Error("Invalid bet structure: missing market/selection/reason");
-      // v2 optional fields — normalise if present, default if absent
-      if (bet.confidence && !VALID_CONFIDENCE.has(bet.confidence.toLowerCase()))
-        bet.confidence = "low"; // coerce rather than reject
-      if (bet.confidence) bet.confidence = bet.confidence.toLowerCase();
-      if (!Array.isArray(bet.evidence)) bet.evidence = [];
+    if (intent === "BEST_ODD") {
+      if (!["bet", "pass"].includes(parsed.decision)) throw new Error("Invalid decision");
+      for (const key of ["best_bet", "market", "odds", "reason"]) {
+        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
+      }
+      if (!VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())) {
+        parsed.confidence = "low";
+      } else {
+        parsed.confidence = parsed.confidence.toLowerCase();
+      }
+    } else if (intent === "BEST_MATCH") {
+      for (const key of ["best_match", "recommended_bet", "reason"]) {
+        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
+      }
+      if (!VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())) {
+        parsed.confidence = "low";
+      } else {
+        parsed.confidence = parsed.confidence.toLowerCase();
+      }
+    } else if (intent === "EXPLAIN") {
+      for (const key of ["explanation", "example", "tip"]) {
+        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
+      }
+    } else {
+      if (typeof parsed.summary !== "string") throw new Error("Missing summary");
+      if (!Array.isArray(parsed.bets)) parsed.bets = [];
     }
     return { valid: true, data: parsed };
   } catch (err) {
     return { valid: false, error: err.message };
   }
+}
+
+function fallbackByIntent(intent) {
+  if (intent === "BEST_ODD") {
+    return {
+      decision: "pass",
+      best_bet: "No clear value edge",
+      market: "N/A",
+      odds: "N/A",
+      reason: "Could not validate a structured BEST_ODD response.",
+      confidence: "low",
+    };
+  }
+  if (intent === "BEST_MATCH") {
+    return {
+      best_match: "No clear match",
+      recommended_bet: "Pass",
+      reason: "Could not validate a structured BEST_MATCH response.",
+      confidence: "low",
+    };
+  }
+  if (intent === "EXPLAIN") {
+    return {
+      explanation: "Could not generate a reliable explanation right now.",
+      example: "Try asking: what does -110 mean?",
+      tip: "Check the sportsbook for current live lines.",
+    };
+  }
+  return {
+    summary: "Could not generate a valid recommendation. Please try again.",
+    bets: [],
+  };
 }
 
 // POST /api/assistant/chat
@@ -372,12 +443,15 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   const model = ALLOWED_MODELS.has(reqModel) ? reqModel : DEFAULT_MODEL;
+  const intent = classifyIntent(userQuery);
   const startTime = Date.now();
-  const formattedContext = formatContext(events);
-  const { system, userMessage, sections, version } = buildPrompt(
+  const formattedContext = formatContext(events, intent);
+  const { system, userMessage, sections, version } = buildPromptByIntent(
+    intent,
     userQuery,
     formattedContext
   );
+  const temperature = intent === "EXPLAIN" ? 0.3 : 0.7;
 
   // SSE setup — keeps Render's 30s proxy alive indefinitely
   res.setHeader("Content-Type", "text/event-stream");
@@ -404,7 +478,8 @@ app.post("/api/assistant/chat", async (req, res) => {
       // Prompt caching on the static system prompt (saves tokens on repeated calls)
       const response = await client.messages.create({
         model,
-        max_tokens: 1024,
+        max_tokens: 300,
+        temperature,
         system: [
           {
             type: "text",
@@ -418,7 +493,7 @@ app.post("/api/assistant/chat", async (req, res) => {
       const latency = Date.now() - startTime;
       const rawText =
         response.content.find((b) => b.type === "text")?.text || "";
-      const validation = validateOutput(rawText);
+      const validation = validateOutput(rawText, intent);
 
       // 8. Logging
       const log = {
@@ -431,6 +506,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         latency_ms: latency,
         success: validation.valid,
         prompt_version: version,
+        intent,
         attempt,
       };
 
@@ -445,11 +521,7 @@ app.post("/api/assistant/chat", async (req, res) => {
       return finish({
         result: validation.valid
           ? validation.data
-          : {
-              summary:
-                "Could not generate a valid recommendation. Please try again.",
-              bets: [],
-            },
+          : fallbackByIntent(intent),
         raw: rawText,
         log,
         // Debug payload — exposes the 4 prompt sections for the AI PM demo UI

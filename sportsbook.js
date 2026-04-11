@@ -328,6 +328,35 @@ async function sendChat(){
 
 function renderResult(r){
   if(!r)return'<span class="no-data">No result</span>';
+  if(r.decision){
+    return `<div class="bet-sum"><strong>Decision:</strong> ${esc(r.decision.toUpperCase())}</div>
+      <div class="bet-cards">
+        <div class="bet-card">
+          <div class="bt-mkt">${esc(r.market||'Best Value')}</div>
+          <div class="bt-sel">▶ ${esc(r.best_bet||'N/A')} ${r.odds?`(${esc(r.odds)})`:''}</div>
+          <div class="bt-meta">${r.confidence?`<span class="cbadge ${esc((r.confidence||'low').toLowerCase())}">${esc(r.confidence)}</span>`:''}</div>
+          <div class="bt-reason">${esc(r.reason||'')}</div>
+        </div>
+      </div>`;
+  }
+  if(r.best_match){
+    return `<div class="bet-sum"><strong>Best match:</strong> ${esc(r.best_match)}</div>
+      <div class="bet-cards">
+        <div class="bet-card">
+          <div class="bt-mkt">Recommended Bet</div>
+          <div class="bt-sel">▶ ${esc(r.recommended_bet||'N/A')}</div>
+          <div class="bt-meta">${r.confidence?`<span class="cbadge ${esc((r.confidence||'low').toLowerCase())}">${esc(r.confidence)}</span>`:''}</div>
+          <div class="bt-reason">${esc(r.reason||'')}</div>
+        </div>
+      </div>`;
+  }
+  if(r.explanation){
+    return `<div class="bet-sum">${esc(r.explanation)}</div>
+      <div class="bet-cards">
+        <div class="bet-card"><div class="bt-mkt">Example</div><div class="bt-reason">${esc(r.example||'')}</div></div>
+        <div class="bet-card"><div class="bt-mkt">Tip</div><div class="bt-reason">${esc(r.tip||'')}</div></div>
+      </div>`;
+  }
   let h=`<div class="bet-sum">${esc(r.summary)}</div>`;
   if(r.bets?.length){
     h+='<div class="bet-cards">';
