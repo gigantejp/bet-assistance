@@ -80,6 +80,7 @@ function pc(n){return n>0?'pos':'neg'}
 
 // STATE
 let currentSport='nba',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
+let latestSportRequestId=0;
 const tabCounts={};
 
 // DOM
@@ -132,13 +133,20 @@ async function fetchCounts(){
 
 // EVENTS
 async function loadSport(sport){
+  const requestId=++latestSportRequestId;
+  currentEvents=[];
+  currentLeagueName=(SPORTS.find(s=>s.key===sport)||{}).label||sport.toUpperCase();
+  selectedEvent=null;
+  currentEventIndex=null;
+  updateCtx();
   evPanel.innerHTML='<div class="state-msg loading">Loading events…</div>';
   try{
     let d;
     try{const r=await fetch(`/api/scoreboard/${sport}`,{signal:AbortSignal.timeout(4000)});d=await safeJson(r);}
     catch{const r=await fetch(ESPN_DIRECT[sport],{cache:'no-store'});d=await r.json();}
+    if(requestId!==latestSportRequestId||sport!==currentSport)return;
     currentEvents=d.events||[];
-    currentLeagueName=d.leagues?.[0]?.name||'';
+    currentLeagueName=d.leagues?.[0]?.name||currentLeagueName;
     renderEvents(currentEvents,sport,currentLeagueName);
   }catch(e){evPanel.innerHTML=`<div class="state-msg">Could not load events: ${esc(e.message)}</div>`;}
 }
@@ -371,7 +379,15 @@ async function sendChat(){
   });
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
-    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
+    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      userQuery:q,
+      events,
+      model,
+      activeSport:currentSport,
+      activeLeague:currentLeagueName,
+      selectedEventId:selectedEvent?.id||selectedEvent?.uid||null,
+      currentView,
+    })});
     if(!r.ok && !r.headers.get('content-type')?.includes('text/event-stream')){
       throw new Error(`Server error (HTTP ${r.status}). Please try again.`);
     }

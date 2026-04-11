@@ -389,6 +389,42 @@ function classifyIntent(query = "") {
   return "GENERAL";
 }
 
+function detectExplicitSportMention(query = "") {
+  const q = (query || "").toLowerCase();
+  const patterns = [
+    ["nba", /\bnba\b|lakers|celtics|warriors|knicks|bulls|heat|nets|bucks/],
+    ["wnba", /\bwnba\b|fever|liberty|sparks|sky\b/],
+    ["ncaam", /ncaam|march madness|college basketball/],
+    ["nfl", /\bnfl\b|patriots|cowboys|eagles|chiefs|packers|49ers/],
+    ["ncaaf", /ncaaf|college football|cfb/],
+    ["mlb", /\bmlb\b|baseball|yankees|dodgers|mets|cubs|braves|red sox/],
+    ["nhl", /\bnhl\b|hockey|rangers|bruins|leafs|penguins|canadiens/],
+    ["ufc", /\bufc\b|mma|fight|octagon/],
+    ["bellator", /bellator/],
+    ["epl", /premier league|epl|arsenal|chelsea|liverpool|man city|man utd/],
+    ["laliga", /la liga|laliga|real madrid|barcelona|atletico/],
+    ["bundesliga", /bundesliga|bayern|dortmund/],
+    ["seriea", /serie a|juventus|inter milan|ac milan/],
+    ["ligue1", /ligue 1|psg|paris saint/],
+    ["mls", /\bmls\b|sounders|galaxy|red bulls/],
+    ["ucl", /champions league|ucl/],
+    ["uel", /europa league|uel/],
+    ["atp", /\batp\b|tennis|djokovic|federer|nadal|alcaraz/],
+    ["wta", /\bwta\b|serena|swiatek|sabalenka/],
+    ["pga", /\bpga\b|golf|masters|open|tiger woods|mcilroy/],
+    ["lpga", /\blpga\b/],
+    ["liv", /\bliv\b golf/],
+    ["f1", /formula 1|\bf1\b|ferrari|mercedes|red bull racing|hamilton|verstappen/],
+    ["nascar", /nascar/],
+    ["indycar", /indycar|indy 500/],
+    ["ipl", /\bipl\b|cricket/],
+    ["pll", /\bpll\b|lacrosse/],
+    ["nll", /\bnll\b/],
+  ];
+  const match = patterns.find(([, pattern]) => pattern.test(q));
+  return match ? match[0] : null;
+}
+
 function explainIntentDecision(query = "", intent = "GENERAL") {
   const q = query.toLowerCase();
   const rules = {
@@ -410,11 +446,27 @@ function explainIntentDecision(query = "", intent = "GENERAL") {
 
 // 3.3 Context Formatter — ESPN events → concise human-readable text
 // Sends only top 3 events to reduce tokens
-function formatContext(events = [], intent = "GENERAL") {
-  if (!events.length) return "No events available.";
+function formatContext(events = [], intent = "GENERAL", activeContext = {}) {
+  const lines = [];
+  const activeLeague = activeContext.activeLeague || activeContext.activeSport || "";
+  const explicitSport = detectExplicitSportMention(activeContext.userQuery || "");
+
+  if (activeLeague) {
+    lines.push(`Active league page: ${activeLeague}`);
+  }
+  if (explicitSport && activeContext.activeSport && explicitSport !== activeContext.activeSport) {
+    lines.push(`User explicitly mentioned another league in the question: ${explicitSport.toUpperCase()}`);
+  } else if (activeLeague) {
+    lines.push("Use the active league page as the default context unless the user explicitly asks about another league.");
+  }
+
+  if (!events.length) {
+    lines.push("No events available.");
+    return lines.join("\n");
+  }
 
   const top = events.slice(0, 3);
-  const lines = ["Live/Upcoming Events:"];
+  lines.push("Live/Upcoming Events:");
 
   top.forEach((ev, i) => {
     const comp = ev.competitions?.[0];
@@ -575,7 +627,15 @@ function fallbackByIntent(intent) {
 // Returns: SSE stream — keepalive comments every 5s, then a single "data:" JSON event
 // This prevents Render's 30-second proxy timeout from killing slow model calls.
 app.post("/api/assistant/chat", async (req, res) => {
-  const { userQuery, events = [], model: reqModel } = req.body;
+  const {
+    userQuery,
+    events = [],
+    model: reqModel,
+    activeSport = "",
+    activeLeague = "",
+    selectedEventId = null,
+    currentView = "league",
+  } = req.body;
   if (!userQuery?.trim()) {
     res.status(400).json({ error: "userQuery is required" });
     return;
@@ -585,7 +645,13 @@ app.post("/api/assistant/chat", async (req, res) => {
   const provider = getModelProvider(model);
   const intent = classifyIntent(userQuery);
   const startTime = Date.now();
-  const formattedContext = formatContext(events, intent);
+  const formattedContext = formatContext(events, intent, {
+    activeSport,
+    activeLeague,
+    selectedEventId,
+    currentView,
+    userQuery,
+  });
   const { system, userMessage, sections, version } = buildPromptByIntent(
     intent,
     userQuery,
