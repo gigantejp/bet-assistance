@@ -254,12 +254,20 @@ const DEMO_MARKETS = [
   { away: "+200", draw: "+250", home: "-230" },
 ];
 
+// Allowed models — validated to prevent arbitrary model injection
+const ALLOWED_MODELS = new Set([
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5-20251001",
+]);
+const DEFAULT_MODEL = "claude-opus-4-6";
+
 // 3.3 Context Formatter — ESPN events → human-readable text
-// PM Decision: compressed + readable → fewer tokens, better output
+// Sends the full event list (up to 15) so the AI can compare all matchups
 function formatContext(events = []) {
   if (!events.length) return "No events available.";
 
-  const top = events.slice(0, 3); // max 3 events per spec
+  const top = events.slice(0, 15); // full board context
   const lines = ["Live/Upcoming Events:"];
 
   top.forEach((ev, i) => {
@@ -353,12 +361,14 @@ function validateOutput(text) {
 }
 
 // POST /api/assistant/chat
-// Body: { userQuery: string, events: ESPN_Event[] }
+// Body: { userQuery: string, events: ESPN_Event[], model?: string }
 // Returns: { result, raw, log, debug }
 app.post("/api/assistant/chat", async (req, res) => {
-  const { userQuery, events = [] } = req.body;
+  const { userQuery, events = [], model: reqModel } = req.body;
   if (!userQuery?.trim())
     return res.status(400).json({ error: "userQuery is required" });
+
+  const model = ALLOWED_MODELS.has(reqModel) ? reqModel : DEFAULT_MODEL;
 
   const startTime = Date.now();
   const formattedContext = formatContext(events);
@@ -374,7 +384,7 @@ app.post("/api/assistant/chat", async (req, res) => {
     try {
       // Prompt caching on the static system prompt (saves tokens on repeated calls)
       const response = await client.messages.create({
-        model: "claude-opus-4-6",
+        model,
         max_tokens: 1024,
         system: [
           {
@@ -398,6 +408,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         cache_read_tokens: response.usage.cache_read_input_tokens || 0,
         cache_write_tokens: response.usage.cache_creation_input_tokens || 0,
         model: response.model,
+        model_requested: model,
         latency_ms: latency,
         success: validation.valid,
         prompt_version: version,
