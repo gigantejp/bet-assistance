@@ -740,9 +740,30 @@
 
     const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Bet Assistance is thinking…</span>');
 
-    const eventsToSend = selectedEvent
-      ? [selectedEvent]
-      : currentEvents.slice(0, 3);
+    const useSelectedEventOnly =
+      !!selectedEvent &&
+      /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b/i.test(query);
+    const eventsToSend = (useSelectedEventOnly ? [selectedEvent] : currentEvents.slice(0, 5)).map(ev => {
+      const comp = ev.competitions?.[0];
+      return {
+        id: ev.id,
+        uid: ev.uid,
+        date: ev.date,
+        competitions: [{
+          competitors: (comp?.competitors || []).map(c => ({
+            homeAway: c.homeAway,
+            score: c.score,
+            team: { displayName: c.team?.displayName },
+          })),
+          status: { type: {
+            state: comp?.status?.type?.state,
+            completed: comp?.status?.type?.completed,
+            description: comp?.status?.type?.description,
+            shortDetail: comp?.status?.type?.shortDetail,
+          } },
+        }],
+      };
+    });
 
     try {
       const res = await fetch('/api/assistant/chat', {

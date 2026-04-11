@@ -361,9 +361,13 @@ async function sendChat(){
   const timer=setInterval(()=>{if(elapsedEl)elapsedEl.textContent=`${Math.round((Date.now()-t0)/1000)}s`;},500);
 
   // Trim events to only the fields formatContext needs — avoids 413 from large ESPN payloads
-  const events=currentEvents.map(ev=>{
+  const useSelectedEventOnly = currentView==='event' || /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b/i.test(q);
+  const sourceEvents = useSelectedEventOnly && selectedEvent ? [selectedEvent] : currentEvents;
+  const events=sourceEvents.map(ev=>{
     const comp=ev.competitions?.[0];
     return{
+      id:ev.id,
+      uid:ev.uid,
       date:ev.date,
       competitions:[{
         competitors:(comp?.competitors||[]).map(c=>({
@@ -371,6 +375,8 @@ async function sendChat(){
           team:{displayName:c.team?.displayName}
         })),
         status:{type:{
+          state:comp?.status?.type?.state,
+          completed:comp?.status?.type?.completed,
           description:comp?.status?.type?.description,
           shortDetail:comp?.status?.type?.shortDetail
         }}

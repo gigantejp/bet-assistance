@@ -430,36 +430,74 @@ function explainIntentDecision(query = "", intent = "UNKNOWN") {
   return "Intent selected: UNKNOWN\nReason: no intent rule matched confidently.";
 }
 
+function isEventScopedQuery(query = "") {
+  const q = (query || "").toLowerCase();
+  return /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b/.test(q);
+}
+
+function isBroaderScopeQuery(query = "") {
+  const q = (query || "").toLowerCase();
+  return /\bgames\b|\bmatches\b|\bevents\b|\btonight\b|\btoday\b|\btomorrow\b|\bbest bets?\b|\bwhat'?s on\b|\bnfl games tonight\b/.test(q);
+}
+
+function getEventStatusMeta(ev = {}) {
+  const comp = ev?.competitions?.[0] || {};
+  const statusType = comp?.status?.type || {};
+  const statusState = statusType?.state || "";
+  const statusDescription = statusType?.description || "Scheduled";
+  const completed = statusType?.completed === true || statusState === "post";
+  return { completed, statusState, statusDescription };
+}
+
 function formatContext(events = [], intent = "UNKNOWN", activeContext = {}) {
   const lines = [];
   const activeLeague = activeContext.activeLeague || activeContext.activeSport || "";
   const explicitSport = detectExplicitSportMention(activeContext.userQuery || "");
+  const eventPageActive = activeContext.currentView === "event";
+  const hasSelectedEvent = !!activeContext.selectedEventId || eventPageActive;
+  const eventScopedQuery = isEventScopedQuery(activeContext.userQuery || "");
+  const broaderScopeQuery = isBroaderScopeQuery(activeContext.userQuery || "");
+  const forceEventScope =
+    hasSelectedEvent &&
+    !explicitSport &&
+    !broaderScopeQuery &&
+    (eventPageActive || eventScopedQuery);
+  const effectiveEvents = forceEventScope ? events.slice(0, 1) : events.slice(0, 5);
 
   if (activeLeague) {
     lines.push(`Active league page: ${activeLeague}`);
   }
+  lines.push("Context priority: Event Context > Page Context > Global Context.");
   if (explicitSport && activeContext.activeSport && explicitSport !== activeContext.activeSport) {
     lines.push(`User explicitly mentioned another league in the question: ${explicitSport.toUpperCase()}`);
   } else if (activeLeague) {
     lines.push("Use the active league page as the default context unless the user explicitly asks about another league.");
   }
+  if (hasSelectedEvent) {
+    lines.push("A current event is selected.");
+  }
+  if (forceEventScope) {
+    lines.push("This query is tied to the current event. Use ONLY the selected event context.");
+  } else if (broaderScopeQuery) {
+    lines.push("This query requests broader scope. Event context should not override the requested league/global scope.");
+  }
 
-  if (!events.length) {
+  if (!effectiveEvents.length) {
     lines.push("No events available.");
     return lines.join("\n");
   }
 
-  const top = events.slice(0, 5);
-  lines.push("Live/Upcoming Events:");
+  lines.push(forceEventScope ? "Current Event Context:" : "Live/Upcoming Events:");
 
-  top.forEach((ev, i) => {
+  effectiveEvents.forEach((ev, i) => {
     const comp = ev.competitions?.[0];
     const competitors = comp?.competitors || [];
     const away = competitors.find((c) => c.homeAway === "away");
     const home = competitors.find((c) => c.homeAway === "home");
     const awayName = away?.team?.displayName || "Away Team";
     const homeName = home?.team?.displayName || "Home Team";
-    const status = comp?.status?.type?.description || "Scheduled";
+    const { completed, statusDescription } = getEventStatusMeta(ev);
+    const status = statusDescription;
     const detail = comp?.status?.type?.shortDetail || "";
     const awayScore = away?.score ?? null;
     const homeScore = home?.score ?? null;
@@ -470,6 +508,7 @@ function formatContext(events = [], intent = "UNKNOWN", activeContext = {}) {
       line += `, Score: ${awayScore}-${homeScore}`;
     line += ")";
     lines.push(line);
+    lines.push(`  Actionable: ${completed ? "No - event completed" : "Yes - event not completed"}`);
 
     const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
     lines.push(`  Odds: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`);
@@ -510,6 +549,69 @@ Apply rules:
 * If no edge -> decision = "pass"
 * If too broad -> return top 5 events
 * If unclear -> ask for clarification
+
+## CONTEXT PRIORITY RULES
+
+You MUST prioritize context in the following order:
+
+1. Event Context (highest priority)
+2. Page Context
+3. Global Context (lowest priority)
+
+### Event Context Rules
+
+- If a specific event is provided -> ALWAYS use that event
+- If the user refers to:
+  - "this game"
+  - "this match"
+  - "this event"
+  -> you MUST use ONLY the current event context
+
+- You MUST NOT introduce other events
+
+### Scope Control
+
+- If the query is about a specific event:
+  -> DO NOT expand to other events
+  -> DO NOT compare with other matches
+  -> DO NOT bring external data
+
+- Stay strictly within the event
+
+### Global Context Usage
+
+- Use global data ONLY when:
+  - The query is generic ("games tonight", "best bets today")
+  - The user explicitly asks for broader scope
+
+### Examples
+
+- "best bet for this game" -> ONLY current event
+- "odds for this match" -> ONLY current event
+- "games tonight" -> global context
+- "best bets today" -> global context
+
+## EVENT VALIDATION RULES
+
+- If an event is completed -> it is NOT actionable
+- DO NOT suggest bets for completed events
+- DO NOT analyze completed events as opportunities
+
+If the event is finished:
+- decision = "pass"
+- Explain clearly that betting is no longer available
+- DO NOT reference other events as fallback
+
+## DECISION DISCIPLINE
+
+If the query is tied to a specific event:
+
+- You MUST remain within that event
+- If no betting value exists -> return "pass"
+- DO NOT expand scope to find alternatives
+- DO NOT introduce unrelated matches
+
+It is better to return PASS than to provide irrelevant suggestions
 
 4. BETTING RULES
 
