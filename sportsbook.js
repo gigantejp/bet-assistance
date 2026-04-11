@@ -260,8 +260,23 @@ async function sendChat(){
   const elapsedEl=loadEl.querySelector('.elapsed-s');
   const timer=setInterval(()=>{if(elapsedEl)elapsedEl.textContent=`${Math.round((Date.now()-t0)/1000)}s`;},500);
 
-  // Always send the full event list as context (server formats up to 15)
-  const events=currentEvents;
+  // Trim events to only the fields formatContext needs — avoids 413 from large ESPN payloads
+  const events=currentEvents.map(ev=>{
+    const comp=ev.competitions?.[0];
+    return{
+      date:ev.date,
+      competitions:[{
+        competitors:(comp?.competitors||[]).map(c=>({
+          homeAway:c.homeAway,score:c.score,
+          team:{displayName:c.team?.displayName}
+        })),
+        status:{type:{
+          description:comp?.status?.type?.description,
+          shortDetail:comp?.status?.type?.shortDetail
+        }}
+      }]
+    };
+  });
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
     const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
