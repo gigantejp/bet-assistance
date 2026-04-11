@@ -4,7 +4,7 @@ const fetch = require("node-fetch");
 const Anthropic = require("@anthropic-ai/sdk");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(__dirname));
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -362,14 +362,16 @@ function validateOutput(text) {
 
 // POST /api/assistant/chat
 // Body: { userQuery: string, events: ESPN_Event[], model?: string }
-// Returns: { result, raw, log, debug }
+// Returns: SSE stream — keepalive comments every 5s, then a single "data:" JSON event
+// This prevents Render's 30-second proxy timeout from killing slow model calls.
 app.post("/api/assistant/chat", async (req, res) => {
   const { userQuery, events = [], model: reqModel } = req.body;
-  if (!userQuery?.trim())
-    return res.status(400).json({ error: "userQuery is required" });
+  if (!userQuery?.trim()) {
+    res.status(400).json({ error: "userQuery is required" });
+    return;
+  }
 
   const model = ALLOWED_MODELS.has(reqModel) ? reqModel : DEFAULT_MODEL;
-
   const startTime = Date.now();
   const formattedContext = formatContext(events);
   const { system, userMessage, sections, version } = buildPrompt(
@@ -377,9 +379,26 @@ app.post("/api/assistant/chat", async (req, res) => {
     formattedContext
   );
 
+  // SSE setup — keeps Render's 30s proxy alive indefinitely
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  // Ping every 5s so the proxy doesn't close the connection
+  const keepalive = setInterval(() => {
+    res.write(":keepalive\n\n");
+  }, 5000);
+
+  const finish = (payload) => {
+    clearInterval(keepalive);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    res.end();
+  };
+
   let lastError = null;
 
-  // 6.3 Fallback: retry once on invalid output
+  // Fallback: retry once on invalid output
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       // Prompt caching on the static system prompt (saves tokens on repeated calls)
@@ -423,7 +442,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         continue;
       }
 
-      return res.json({
+      return finish({
         result: validation.valid
           ? validation.data
           : {
@@ -442,10 +461,7 @@ app.post("/api/assistant/chat", async (req, res) => {
     }
   }
 
-  return res.status(500).json({
-    error: "Failed after 2 attempts",
-    detail: lastError,
-  });
+  return finish({ error: "Failed after 2 attempts", detail: lastError });
 });
 
 const PORT = process.env.PORT || 3000;

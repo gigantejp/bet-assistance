@@ -253,23 +253,77 @@ async function sendChat(){
   }
   isLoading=true;cmSend.disabled=true;cmInput.value='';
   addMsg('user',esc(q),'You');
-  const loadEl=addMsg('assistant','<span class="spinner">Bet Assistance is thinking…</span>');
-  // Always send the full event list as context (server formats up to 15)
-  const events=currentEvents;
+
+  // Elapsed timer shown while waiting
+  const t0=Date.now();
+  const loadEl=addMsg('assistant','<span class="spinner">Thinking… <span class="elapsed-s">0s</span></span>');
+  const elapsedEl=loadEl.querySelector('.elapsed-s');
+  const timer=setInterval(()=>{if(elapsedEl)elapsedEl.textContent=`${Math.round((Date.now()-t0)/1000)}s`;},500);
+
+  // Trim events to only the fields formatContext needs — avoids 413 from large ESPN payloads
+  const events=currentEvents.map(ev=>{
+    const comp=ev.competitions?.[0];
+    return{
+      date:ev.date,
+      competitions:[{
+        competitors:(comp?.competitors||[]).map(c=>({
+          homeAway:c.homeAway,score:c.score,
+          team:{displayName:c.team?.displayName}
+        })),
+        status:{type:{
+          description:comp?.status?.type?.description,
+          shortDetail:comp?.status?.type?.shortDetail
+        }}
+      }]
+    };
+  });
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
     const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
-    const data=await safeJson(r);
+    if(!r.ok && !r.headers.get('content-type')?.includes('text/event-stream')){
+      throw new Error(`Server error (HTTP ${r.status}). Please try again.`);
+    }
+
+    // Read SSE stream — server sends :keepalive comments then a final "data:" line
+    const reader=r.body.getReader();
+    const dec=new TextDecoder();
+    let buf='',finalData=null;
+    while(true){
+      const{done,value}=await reader.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n');
+      buf=lines.pop(); // keep incomplete trailing line
+      for(const line of lines){
+        if(line.startsWith('data: ')){
+          try{finalData=JSON.parse(line.slice(6));}catch{}
+        }
+      }
+    }
+    // Flush any remaining buffered data
+    if(buf.startsWith('data: ')){try{finalData=JSON.parse(buf.slice(6));}catch{}}
+
+    if(!finalData) throw new Error('No response received. Please try again.');
+    const data=finalData;
+    if(data.error) throw new Error(`Server error: ${data.error}`);
+
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
-    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms`;
+    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${(data.log?.model||model).replace('claude-','')}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
     const hint=document.getElementById('model-hint');
     if(hint)hint.textContent=data.log?.model?`✓ ${data.log.model.replace('claude-','').replace('-2025','')}`:'';
-  }catch(e){loadEl.querySelector('.msg-bubble').innerHTML=`<span class="no-data">${esc(e.message)}</span>`;}
-  finally{isLoading=false;cmSend.disabled=false;cmInput.focus();}
+  }catch(e){
+    // Re-check real server status so the badge stays accurate
+    serverOnline=await checkServer();
+    const srvLbl=document.getElementById('srv-lbl');
+    if(srvLbl)srvLbl.textContent=serverOnline?'AI online':'AI offline';
+    srvDot.className=serverOnline?'on':'off';
+    loadEl.querySelector('.msg-bubble').innerHTML=`<span class="no-data">⚠ ${esc(e.message)}</span>`;
+  }
+  finally{clearInterval(timer);isLoading=false;cmSend.disabled=false;cmInput.focus();}
 }
 
 function renderResult(r){
