@@ -214,37 +214,9 @@ app.post("/chat", async (req, res) => {
 //  Spec: AI Betting Assistant — Prompt Design & Generation v2
 // ════════════════════════════════════════════════════════════════
 
-// 3.2 System Prompt — v2
-// Key upgrades over v1:
-//  - Explicit analysis framework (4 steps)
-//  - Confidence criteria with numeric thresholds
-//  - Mandatory data citation (anti-hallucination)
-//  - Odds → implied probability instruction
-const SYSTEM_PROMPT = {
-  version: "v2",
-  text: `You are an expert sports betting analyst. Your recommendations must be grounded in the data provided.
-
-ANALYSIS FRAMEWORK — reason through these steps before recommending:
-1. GAME STATUS: Is the game live (with a score) or upcoming? Live games carry momentum signals; upcoming games offer only the scheduled matchup.
-2. COMPETITIVE BALANCE: Read the odds. Convert American odds to implied probability:
-   - Favorite:  |odds| / (|odds| + 100)  → e.g., -150 = 60% implied win probability
-   - Underdog:  100 / (odds + 100)       → e.g., +120 = 45.5% implied win probability
-3. VALUE ASSESSMENT: Does the implied probability seem fair given the available data? If odds are near -110/-110, it is a near coin-flip — only recommend if there is a specific signal.
-4. DATA SUFFICIENCY: Do you have enough context to justify a recommendation? If only team names and status are available, state the limited basis explicitly.
-
-CONFIDENCE LEVELS — apply these criteria strictly:
-- HIGH: Clear favorite at -200 or shorter, OR strong live momentum visible in score
-- MEDIUM: Moderate favorite (-120 to -190), or a meaningful edge visible in the data
-- LOW: Near-even odds (-115 to +115), or only scheduled game info with no other signal
-- NONE: Return empty bets array and explain why in the summary
-
-RULES:
-- Every bet MUST cite specific data from the context (team name, score, exact odds)
-- Do not invent statistics, streaks, or historical data not present in the context
-- Do not recommend LOW-confidence bets unless the user explicitly asks for them
-- Always include the implied probability when discussing odds
-- Use uncertainty language — never guarantee outcomes
-- Always respond in English`,
+const PROMPT_SYSTEM = {
+  version: "v3",
+  text: "You are Betsy. Follow the prompt exactly and return only valid JSON.",
 };
 
 // Demo odds table (ESPN doesn't expose real odds)
@@ -382,11 +354,23 @@ async function createModelResponse({ model, system, userMessage, temperature, ma
 }
 
 function classifyIntent(query = "") {
-  const q = query.toLowerCase();
-  if (/best odds|value|best bet/.test(q)) return "BEST_ODD";
-  if (/best match|which game/.test(q)) return "BEST_MATCH";
-  if (/explain|what does this mean|what does .* mean/.test(q)) return "EXPLAIN";
-  return "GENERAL";
+  const q = query.toLowerCase().trim();
+  if (!q) return "UNKNOWN";
+  if (/best odds|value\b|best price|best line/.test(q)) return "FIND_BEST_ODDS";
+  if (/best match|which game|best game/.test(q)) return "FIND_BEST_MATCH";
+  if (/explain|what does .* mean|meaning of|how do odds work|-110|moneyline|spread|total/.test(q)) {
+    return "EXPLAIN";
+  }
+  if (/games|matches|fixtures|events|tonight|today|tomorrow|schedule|what's on|what is on/.test(q)) {
+    return "FIND_EVENTS";
+  }
+  if (
+    /safe is the favorite|favorite|underdog|analyze|analysis|should i bet|lean|pick|take on|matchup|vs\b/.test(q) ||
+    !!detectExplicitSportMention(q)
+  ) {
+    return "ANALYZE_EVENT";
+  }
+  return "UNKNOWN";
 }
 
 function detectExplicitSportMention(query = "") {
@@ -425,12 +409,14 @@ function detectExplicitSportMention(query = "") {
   return match ? match[0] : null;
 }
 
-function explainIntentDecision(query = "", intent = "GENERAL") {
+function explainIntentDecision(query = "", intent = "UNKNOWN") {
   const q = query.toLowerCase();
   const rules = {
-    BEST_ODD: [/best odds/, /value/, /best bet/],
-    BEST_MATCH: [/best match/, /which game/],
-    EXPLAIN: [/explain/, /what does this mean/, /what does .* mean/],
+    FIND_EVENTS: [/games/, /matches/, /tonight/, /today/, /tomorrow/],
+    FIND_BEST_ODDS: [/best odds/, /value/, /best price/, /best line/],
+    FIND_BEST_MATCH: [/best match/, /which game/, /best game/],
+    ANALYZE_EVENT: [/favorite/, /underdog/, /analyze/, /analysis/, /matchup/, /vs\b/],
+    EXPLAIN: [/explain/, /what does .* mean/, /meaning of/, /-110/, /moneyline/, /spread/, /total/],
   };
 
   const matched = (rules[intent] || [])
@@ -441,12 +427,10 @@ function explainIntentDecision(query = "", intent = "GENERAL") {
     return `Intent selected: ${intent}\nReason: matched keyword rule(s) -> ${matched.join(", ")}`;
   }
 
-  return `Intent selected: GENERAL\nReason: no BEST_ODD, BEST_MATCH, or EXPLAIN rule matched, so fallback GENERAL was used.`;
+  return "Intent selected: UNKNOWN\nReason: no intent rule matched confidently.";
 }
 
-// 3.3 Context Formatter — ESPN events → concise human-readable text
-// Sends only top 3 events to reduce tokens
-function formatContext(events = [], intent = "GENERAL", activeContext = {}) {
+function formatContext(events = [], intent = "UNKNOWN", activeContext = {}) {
   const lines = [];
   const activeLeague = activeContext.activeLeague || activeContext.activeSport || "";
   const explicitSport = detectExplicitSportMention(activeContext.userQuery || "");
@@ -465,7 +449,7 @@ function formatContext(events = [], intent = "GENERAL", activeContext = {}) {
     return lines.join("\n");
   }
 
-  const top = events.slice(0, 3);
+  const top = events.slice(0, 5);
   lines.push("Live/Upcoming Events:");
 
   top.forEach((ev, i) => {
@@ -480,7 +464,7 @@ function formatContext(events = [], intent = "GENERAL", activeContext = {}) {
     const awayScore = away?.score ?? null;
     const homeScore = home?.score ?? null;
 
-    let line = `- ${awayName} vs ${homeName} (${status}`;
+    let line = `- Event ${i + 1}: ${awayName} vs ${homeName} (${status}`;
     if (detail) line += `, ${detail}`;
     if (awayScore !== null && homeScore !== null)
       line += `, Score: ${awayScore}-${homeScore}`;
@@ -488,138 +472,187 @@ function formatContext(events = [], intent = "GENERAL", activeContext = {}) {
     lines.push(line);
 
     const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
-    if (intent === "EXPLAIN") {
-      lines.push(
-        `  Example odds: Favorite ${homeName} ${odds.home}, Underdog ${awayName} ${odds.away}`
-      );
-    } else {
-      lines.push(
-        `  Match Winner: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`
-      );
-    }
+    lines.push(`  Odds: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`);
   });
 
   return lines.join("\n");
 }
 
-function buildPromptByIntent(intent, userQuery, formattedContext) {
-  const outputByIntent = {
-    BEST_ODD: `Return valid JSON only:
-{
-  "decision": "bet | pass",
-  "best_bet": "...",
-  "market": "...",
-  "odds": "...",
-  "reason": "...",
-  "confidence": "low | medium | high"
-}`,
-    BEST_MATCH: `Return valid JSON only:
-{
-  "best_match": "...",
-  "recommended_bet": "...",
-  "reason": "...",
-  "confidence": "low | medium | high"
-}`,
-    EXPLAIN: `Return valid JSON only:
-{
-  "explanation": "...",
-  "example": "...",
-  "tip": "..."
-}`,
-    GENERAL: `Return valid JSON only:
-{
-  "summary": "...",
-  "bets": []
-}`,
-  };
+function buildPrompt(query = "", context = "") {
+  return `1. ROLE
+You are Betsy, a sportsbook AI assistant.
 
-  const outputInstruction = outputByIntent[intent] || outputByIntent.GENERAL;
+Your job is NOT to chat.
+Your job is to help users discover events and make betting decisions.
+
+2. DECISION ENGINE
+Classify the request into ONE of:
+
+* FIND_EVENTS
+* FIND_BEST_ODDS
+* FIND_BEST_MATCH
+* ANALYZE_EVENT
+* EXPLAIN
+* UNKNOWN
+
+Apply rules:
+
+* "games", "matches", "tonight" -> FIND_EVENTS
+* "best odds", "value" -> FIND_BEST_ODDS
+* "best match" -> FIND_BEST_MATCH
+* "explain" -> EXPLAIN
+* specific teams/events -> ANALYZE_EVENT
+
+3. CONTEXT RULES
+
+* Use ONLY provided data
+* NEVER invent data
+* If no edge -> decision = "pass"
+* If too broad -> return top 5 events
+* If unclear -> ask for clarification
+
+4. BETTING RULES
+
+* No guarantees
+* No stake suggestions
+* No aggressive encouragement
+* Prefer PASS over weak bets
+
+5. OUTPUT PROTOCOL
+
+Return ONLY valid JSON:
+
+{
+  "intent": "...",
+  "decision": "bet | lean | pass | explore",
+  "confidence": "low | medium | high",
+  "summary": "...",
+  "insight": "...",
+  "next_action": "...",
+  "data": {
+    "events": [],
+    "bets": []
+  }
+}
+
+6. CONTEXT
+
+${context}
+
+7. USER QUERY
+
+${query}`;
+}
+
+function buildPromptPayload(userQuery, formattedContext) {
+  const detectedIntent = classifyIntent(userQuery);
+  const outputFormat = `{
+  "intent": "...",
+  "decision": "bet | lean | pass | explore",
+  "confidence": "low | medium | high",
+  "summary": "...",
+  "insight": "...",
+  "next_action": "...",
+  "data": {
+    "events": [],
+    "bets": []
+  }
+}`;
 
   return {
-    system: SYSTEM_PROMPT.text,
-    userMessage: `Intent: ${intent}\nContext:\n${formattedContext}\n\nUser question: ${userQuery}\n\n${outputInstruction}`,
+    system: PROMPT_SYSTEM.text,
+    userMessage: buildPrompt(userQuery, formattedContext),
     sections: {
-      systemPrompt: SYSTEM_PROMPT.text,
-      detectedIntent: intent,
-      intentDecision: explainIntentDecision(userQuery, intent),
+      systemPrompt: PROMPT_SYSTEM.text,
+      detectedIntent,
+      intentDecision: explainIntentDecision(userQuery, detectedIntent),
       contextData: formattedContext,
       userInput: userQuery,
-      outputFormat: outputInstruction,
+      outputFormat,
     },
-    version: SYSTEM_PROMPT.version,
+    version: PROMPT_SYSTEM.version,
   };
 }
 
-// 6.2 Output Validator — intent-aware structured outputs
 const VALID_CONFIDENCE = new Set(["high", "medium", "low"]);
-function validateOutput(text, intent) {
+const VALID_DECISIONS = new Set(["bet", "lean", "pass", "explore"]);
+const VALID_INTENTS = new Set([
+  "FIND_EVENTS",
+  "FIND_BEST_ODDS",
+  "FIND_BEST_MATCH",
+  "ANALYZE_EVENT",
+  "EXPLAIN",
+  "UNKNOWN",
+]);
+
+function normalizeBet(bet = {}) {
+  return {
+    market: typeof bet.market === "string" ? bet.market : "General",
+    selection: typeof bet.selection === "string" ? bet.selection : "",
+    odds: typeof bet.odds === "string" ? bet.odds : "",
+    reason: typeof bet.reason === "string" ? bet.reason : "",
+    confidence: VALID_CONFIDENCE.has((bet.confidence || "").toLowerCase())
+      ? bet.confidence.toLowerCase()
+      : "low",
+    evidence: Array.isArray(bet.evidence) ? bet.evidence.map(String).slice(0, 5) : [],
+  };
+}
+
+function normalizeEvent(event = {}) {
+  return {
+    name: typeof event.name === "string" ? event.name : "",
+    status: typeof event.status === "string" ? event.status : "",
+    recommendation: typeof event.recommendation === "string" ? event.recommendation : "",
+  };
+}
+
+function safeFallbackResponse() {
+  return {
+    intent: "UNKNOWN",
+    decision: "explore",
+    confidence: "low",
+    summary: "Could not process request",
+    insight: "Try rephrasing",
+    next_action: "Ask a simpler question",
+    data: { events: [], bets: [] },
+  };
+}
+
+function parseResponse(text = "") {
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No JSON block found in response");
     const parsed = JSON.parse(match[0]);
-    if (intent === "BEST_ODD") {
-      if (!["bet", "pass"].includes(parsed.decision)) throw new Error("Invalid decision");
-      for (const key of ["best_bet", "market", "odds", "reason"]) {
-        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
-      }
-      if (!VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())) {
-        parsed.confidence = "low";
-      } else {
-        parsed.confidence = parsed.confidence.toLowerCase();
-      }
-    } else if (intent === "BEST_MATCH") {
-      for (const key of ["best_match", "recommended_bet", "reason"]) {
-        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
-      }
-      if (!VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())) {
-        parsed.confidence = "low";
-      } else {
-        parsed.confidence = parsed.confidence.toLowerCase();
-      }
-    } else if (intent === "EXPLAIN") {
-      for (const key of ["explanation", "example", "tip"]) {
-        if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
-      }
-    } else {
-      if (typeof parsed.summary !== "string") throw new Error("Missing summary");
-      if (!Array.isArray(parsed.bets)) parsed.bets = [];
+    if (!VALID_INTENTS.has(parsed.intent)) parsed.intent = "UNKNOWN";
+    if (!VALID_DECISIONS.has(parsed.decision)) parsed.decision = "explore";
+    parsed.confidence = VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())
+      ? parsed.confidence.toLowerCase()
+      : "low";
+    for (const key of ["summary", "insight", "next_action"]) {
+      if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
     }
+    if (!parsed.data || typeof parsed.data !== "object") parsed.data = {};
+    parsed.data.events = Array.isArray(parsed.data.events)
+      ? parsed.data.events.map(normalizeEvent).slice(0, 5)
+      : [];
+    parsed.data.bets = Array.isArray(parsed.data.bets)
+      ? parsed.data.bets.map(normalizeBet).slice(0, 5)
+      : [];
     return { valid: true, data: parsed };
   } catch (err) {
     return { valid: false, error: err.message };
   }
 }
 
-function fallbackByIntent(intent) {
-  if (intent === "BEST_ODD") {
-    return {
-      decision: "pass",
-      best_bet: "No clear value edge",
-      market: "N/A",
-      odds: "N/A",
-      reason: "Could not validate a structured BEST_ODD response.",
-      confidence: "low",
-    };
-  }
-  if (intent === "BEST_MATCH") {
-    return {
-      best_match: "No clear match",
-      recommended_bet: "Pass",
-      reason: "Could not validate a structured BEST_MATCH response.",
-      confidence: "low",
-    };
-  }
-  if (intent === "EXPLAIN") {
-    return {
-      explanation: "Could not generate a reliable explanation right now.",
-      example: "Try asking: what does -110 mean?",
-      tip: "Check the sportsbook for current live lines.",
-    };
-  }
-  return {
-    summary: "Could not generate a valid recommendation. Please try again.",
-    bets: [],
-  };
+async function generateAIResponse(query, context, model) {
+  const promptPayload = buildPromptPayload(query, context);
+  return createModelResponse({
+    model,
+    system: promptPayload.system,
+    userMessage: promptPayload.userMessage,
+    temperature: 0.7,
+    maxTokens: 300,
+  });
 }
 
 // POST /api/assistant/chat
@@ -652,12 +685,7 @@ app.post("/api/assistant/chat", async (req, res) => {
     currentView,
     userQuery,
   });
-  const { system, userMessage, sections, version } = buildPromptByIntent(
-    intent,
-    userQuery,
-    formattedContext
-  );
-  const temperature = intent === "EXPLAIN" ? 0.3 : 0.7;
+  const { sections, version } = buildPromptPayload(userQuery, formattedContext);
 
   // SSE setup — keeps Render's 30s proxy alive indefinitely
   res.setHeader("Content-Type", "text/event-stream");
@@ -681,17 +709,11 @@ app.post("/api/assistant/chat", async (req, res) => {
   // Fallback: retry once on invalid output
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const response = await createModelResponse({
-        model,
-        system,
-        userMessage,
-        temperature,
-        maxTokens: 300,
-      });
+      const response = await generateAIResponse(userQuery, formattedContext, model);
 
       const latency = Date.now() - startTime;
       const rawText = response.rawText || "";
-      const validation = validateOutput(rawText, intent);
+      const validation = parseResponse(rawText);
 
       // 8. Logging
       const log = {
@@ -720,7 +742,7 @@ app.post("/api/assistant/chat", async (req, res) => {
       return finish({
         result: validation.valid
           ? validation.data
-          : fallbackByIntent(intent),
+          : safeFallbackResponse(),
         raw: rawText,
         log,
         // Debug payload — exposes the 4 prompt sections for the AI PM demo UI
@@ -732,7 +754,21 @@ app.post("/api/assistant/chat", async (req, res) => {
     }
   }
 
-  return finish({ error: lastError || "Failed after 2 attempts", detail: lastError });
+  return finish({
+    result: safeFallbackResponse(),
+    error: lastError || "Failed after 2 attempts",
+    detail: lastError,
+    log: {
+      model_requested: model,
+      provider,
+      latency_ms: Date.now() - startTime,
+      success: false,
+      prompt_version: version,
+      intent,
+      attempt: 2,
+    },
+    debug: { sections, version },
+  });
 });
 
 const PORT = process.env.PORT || 3000;

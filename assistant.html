@@ -675,16 +675,38 @@
 
   function renderBetResult(result) {
     if (!result) return '<span class="no-data-msg">No result</span>';
-    let html = `<div class="bet-summary">${escHtml(result.summary)}</div>`;
-    if (result.bets?.length) {
+    let html = `<div class="bet-summary">${escHtml(result.summary || 'No summary')}</div>`;
+    html += `<div class="bet-meta-row">${result.intent ? `<span class="confidence-badge">${escHtml(result.intent)}</span>` : ''}${result.confidence ? `<span class="confidence-badge ${(result.confidence || '').toLowerCase()}">${escHtml(result.confidence)}</span>` : ''}${result.decision ? `<span class="implied-prob">decision: ${escHtml(result.decision)}</span>` : ''}</div>`;
+    if (result.insight || result.next_action) {
       html += '<div class="bet-cards">';
-      result.bets.forEach(bet => {
+      if (result.insight) {
+        html += `<div class="bet-card"><div class="bet-market">Insight</div><div class="bet-reason">${escHtml(result.insight)}</div></div>`;
+      }
+      if (result.next_action) {
+        html += `<div class="bet-card"><div class="bet-market">Next Action</div><div class="bet-reason">${escHtml(result.next_action)}</div></div>`;
+      }
+      html += '</div>';
+    }
+    if (result.data?.events?.length) {
+      html += '<div class="bet-cards">';
+      result.data.events.forEach(ev => {
+        html += `<div class="bet-card">
+          <div class="bet-market">${escHtml(ev.name || 'Event')}</div>
+          <div class="bet-reason">${escHtml(ev.status || '')}</div>
+          <div class="bet-reason">${escHtml(ev.recommendation || '')}</div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    if (result.data?.bets?.length) {
+      html += '<div class="bet-cards">';
+      result.data.bets.forEach(bet => {
         const conf = (bet.confidence || '').toLowerCase();
         const confBadge = conf
           ? `<span class="confidence-badge ${conf}">${conf}</span>`
           : '';
-        const impliedProb = bet.implied_probability
-          ? `<span class="implied-prob">implied: ${escHtml(bet.implied_probability)}</span>`
+        const odds = bet.odds
+          ? `<span class="implied-prob">${escHtml(bet.odds)}</span>`
           : '';
         const evidenceItems = Array.isArray(bet.evidence) && bet.evidence.length
           ? `<ul class="bet-evidence">${bet.evidence.map(e => `<li>${escHtml(e)}</li>`).join('')}</ul>`
@@ -692,7 +714,7 @@
         html += `<div class="bet-card">
           <div class="bet-market">${escHtml(bet.market)}</div>
           <div class="bet-selection">▶ ${escHtml(bet.selection)}</div>
-          <div class="bet-meta-row">${confBadge}${impliedProb}</div>
+          <div class="bet-meta-row">${confBadge}${odds}</div>
           <div class="bet-reason">${escHtml(bet.reason)}</div>
           ${evidenceItems}
         </div>`;
