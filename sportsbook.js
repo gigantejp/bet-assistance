@@ -308,13 +308,13 @@ async function sendChat(){
     if(data.error) throw new Error(`Server error: ${data.error}`);
 
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
-    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${(data.log?.model||model).replace('claude-','')}`;
+    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${formatModelHint(data.log?.model||model)}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
     const hint=document.getElementById('model-hint');
-    if(hint)hint.textContent=data.log?.model?`✓ ${data.log.model.replace('claude-','').replace('-2025','')}`:'';
+    if(hint)hint.textContent=data.log?.model?`✓ ${formatModelHint(data.log.model)}`:'';
   }catch(e){
     // Re-check real server status so the badge stays accurate
     serverOnline=await checkServer();
@@ -400,6 +400,13 @@ function updateMetrics(log){
   document.getElementById('m-cache').textContent=log.cache_read_tokens||'0';
   document.getElementById('m-lat').textContent=log.latency_ms||'—';
   document.getElementById('log-box').innerHTML=Object.entries(log).map(([k,v])=>`<span class="lk">${k}</span>: <span class="lv">${JSON.stringify(v)}</span>`).join('\n');
+}
+
+function formatModelHint(model){
+  const m=String(model||'');
+  if(m.startsWith('claude-')) return m.replace('claude-','');
+  if(m.startsWith('gpt-')) return m.replace(/^gpt-/,'GPT-').replace(/-mini$/,' Mini');
+  return m;
 }
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}

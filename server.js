@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(__dirname));
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ESPN public APIs — no auth, no Cloudflare
 const ESPN_ENDPOINTS = {
@@ -255,12 +255,100 @@ const DEMO_MARKETS = [
 ];
 
 // Allowed models — validated to prevent arbitrary model injection
-const ALLOWED_MODELS = new Set([
-  "claude-opus-4-6",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-]);
+const MODEL_CATALOG = {
+  "claude-opus-4-6": { provider: "anthropic" },
+  "claude-sonnet-4-6": { provider: "anthropic" },
+  "claude-haiku-4-5-20251001": { provider: "anthropic" },
+  "gpt-4.1": { provider: "openai" },
+  "gpt-4.1-mini": { provider: "openai" },
+  "gpt-4o": { provider: "openai" },
+  "gpt-4o-mini": { provider: "openai" },
+};
+const ALLOWED_MODELS = new Set(Object.keys(MODEL_CATALOG));
 const DEFAULT_MODEL = "claude-opus-4-6";
+
+function getModelProvider(model) {
+  return MODEL_CATALOG[model]?.provider || MODEL_CATALOG[DEFAULT_MODEL].provider;
+}
+
+async function createModelResponse({ model, system, userMessage, temperature, maxTokens }) {
+  const provider = getModelProvider(model);
+
+  if (provider === "anthropic") {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
+    }
+
+    const response = await anthropicClient.messages.create({
+      model,
+      max_tokens: maxTokens,
+      temperature,
+      system: [
+        {
+          type: "text",
+          text: system,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [{ role: "user", content: userMessage }],
+    });
+
+    return {
+      provider,
+      model: response.model,
+      rawText: response.content.find((b) => b.type === "text")?.text || "",
+      usage: {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        cache_read_input_tokens: response.usage.cache_read_input_tokens || 0,
+        cache_creation_input_tokens: response.usage.cache_creation_input_tokens || 0,
+      },
+    };
+  }
+
+  if (provider === "openai") {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured");
+    }
+
+    const openAIResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userMessage },
+        ],
+      }),
+    });
+
+    if (!openAIResponse.ok) {
+      const errorText = await openAIResponse.text();
+      throw new Error(`OpenAI API error (${openAIResponse.status}): ${errorText}`);
+    }
+
+    const response = await openAIResponse.json();
+    return {
+      provider,
+      model: response.model || model,
+      rawText: response.choices?.[0]?.message?.content || "",
+      usage: {
+        input_tokens: response.usage?.prompt_tokens || 0,
+        output_tokens: response.usage?.completion_tokens || 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    };
+  }
+
+  throw new Error(`Unsupported provider for model: ${model}`);
+}
 
 function classifyIntent(query = "") {
   const q = query.toLowerCase();
@@ -463,6 +551,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   const model = ALLOWED_MODELS.has(reqModel) ? reqModel : DEFAULT_MODEL;
+  const provider = getModelProvider(model);
   const intent = classifyIntent(userQuery);
   const startTime = Date.now();
   const formattedContext = formatContext(events, intent);
@@ -495,24 +584,16 @@ app.post("/api/assistant/chat", async (req, res) => {
   // Fallback: retry once on invalid output
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      // Prompt caching on the static system prompt (saves tokens on repeated calls)
-      const response = await client.messages.create({
+      const response = await createModelResponse({
         model,
-        max_tokens: 300,
+        system,
+        userMessage,
         temperature,
-        system: [
-          {
-            type: "text",
-            text: system,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: userMessage }],
+        maxTokens: 300,
       });
 
       const latency = Date.now() - startTime;
-      const rawText =
-        response.content.find((b) => b.type === "text")?.text || "";
+      const rawText = response.rawText || "";
       const validation = validateOutput(rawText, intent);
 
       // 8. Logging
@@ -523,6 +604,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         cache_write_tokens: response.usage.cache_creation_input_tokens || 0,
         model: response.model,
         model_requested: model,
+        provider,
         latency_ms: latency,
         success: validation.valid,
         prompt_version: version,
@@ -560,4 +642,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Betting assistant running at http://localhost:${PORT}`);
   console.log("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "loaded" : "MISSING");
+  console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "loaded" : "MISSING");
 });
