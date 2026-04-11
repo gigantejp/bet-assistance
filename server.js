@@ -270,6 +270,25 @@ function classifyIntent(query = "") {
   return "GENERAL";
 }
 
+function explainIntentDecision(query = "", intent = "GENERAL") {
+  const q = query.toLowerCase();
+  const rules = {
+    BEST_ODD: [/best odds/, /value/, /best bet/],
+    BEST_MATCH: [/best match/, /which game/],
+    EXPLAIN: [/explain/, /what does this mean/, /what does .* mean/],
+  };
+
+  const matched = (rules[intent] || [])
+    .map((pattern) => pattern.source.replace(/\\b/g, ""))
+    .filter((pattern) => new RegExp(pattern, "i").test(q));
+
+  if (matched.length) {
+    return `Intent selected: ${intent}\nReason: matched keyword rule(s) -> ${matched.join(", ")}`;
+  }
+
+  return `Intent selected: GENERAL\nReason: no BEST_ODD, BEST_MATCH, or EXPLAIN rule matched, so fallback GENERAL was used.`;
+}
+
 // 3.3 Context Formatter — ESPN events → concise human-readable text
 // Sends only top 3 events to reduce tokens
 function formatContext(events = [], intent = "GENERAL") {
@@ -351,6 +370,7 @@ function buildPromptByIntent(intent, userQuery, formattedContext) {
     sections: {
       systemPrompt: SYSTEM_PROMPT.text,
       detectedIntent: intent,
+      intentDecision: explainIntentDecision(userQuery, intent),
       contextData: formattedContext,
       userInput: userQuery,
       outputFormat: outputInstruction,

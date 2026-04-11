@@ -69,6 +69,7 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .ps{margin-bottom:10px}
 .sl{font-size:.64rem;text-transform:uppercase;letter-spacing:.1em;padding:2px 7px;border-radius:3px;margin-bottom:5px;display:inline-flex;align-items:center;gap:4px}
 .sl.sys{background:#1a0a2e;color:var(--purple);border:1px solid #2a1050}
+.sl.int{background:#102410;color:#7cf29a;border:1px solid #1f5a2e}
 .sl.ctx{background:#0a1e2e;color:var(--accent);border:1px solid #1a3a50}
 .sl.usr{background:#0a2010;color:var(--green);border:1px solid #1a4020}
 .sl.out{background:#1e1400;color:var(--warn);border:1px solid #3a2800}
@@ -177,13 +178,14 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
       <div id="tab-prompt">
         <div class="ph-msg" id="prompt-ph">
           <strong>How the prompt is built</strong>
-          Click a game, then ask the AI. The 4-section prompt architecture will appear here in real time.
+          Click a game, then ask the AI. The 5-section prompt architecture will appear here in real time.
         </div>
         <div id="prompt-secs" style="display:none">
           <div class="ps"><div class="sl sys"><span class="sn">1</span> System Prompt <span class="vtag" id="vtag">v2</span></div><div class="code-block" id="s-sys"></div></div>
-          <div class="ps"><div class="sl ctx"><span class="sn">2</span> Context Data</div><div class="code-block" id="s-ctx"></div></div>
-          <div class="ps"><div class="sl usr"><span class="sn">3</span> User Input</div><div class="code-block" id="s-usr"></div></div>
-          <div class="ps"><div class="sl out"><span class="sn">4</span> Output Format</div><div class="code-block" id="s-out"></div></div>
+          <div class="ps"><div class="sl int"><span class="sn">2</span> Intent Decision</div><div class="code-block" id="s-int"></div></div>
+          <div class="ps"><div class="sl ctx"><span class="sn">3</span> Context Data</div><div class="code-block" id="s-ctx"></div></div>
+          <div class="ps"><div class="sl usr"><span class="sn">4</span> User Input</div><div class="code-block" id="s-usr"></div></div>
+          <div class="ps"><div class="sl out"><span class="sn">5</span> Output Format</div><div class="code-block" id="s-out"></div></div>
         </div>
       </div>
       <div id="tab-metrics" style="display:none">

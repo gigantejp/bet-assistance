@@ -384,7 +384,8 @@ function updatePrompt(secs,ver){
   document.getElementById('prompt-ph').style.display='none';
   document.getElementById('prompt-secs').style.display='';
   document.getElementById('vtag').textContent=ver||'v2';
-  setCode('s-sys',secs.systemPrompt);setCode('s-ctx',secs.contextData);
+  setCode('s-sys',secs.systemPrompt);setCode('s-int',secs.intentDecision||secs.detectedIntent);
+  setCode('s-ctx',secs.contextData);
   setCode('s-usr',secs.userInput);setCode('s-out',secs.outputFormat);
 }
 function setCode(id,txt){
