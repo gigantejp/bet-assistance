@@ -238,15 +238,20 @@ async function sendChat(){
   isLoading=true;cmSend.disabled=true;cmInput.value='';
   addMsg('user',esc(q),'You');
   const loadEl=addMsg('assistant','<span class="spinner">Bet Assistance is thinking…</span>');
-  const events=selectedEvent?[selectedEvent]:currentEvents.slice(0,3);
+  // Always send the full event list as context (server formats up to 15)
+  const events=currentEvents;
+  const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
-    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events})});
+    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
     const data=await safeJson(r);
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
     const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.log)updateMetrics(data.log);
+    // Show which model actually responded
+    const hint=document.getElementById('model-hint');
+    if(hint)hint.textContent=data.log?.model?`✓ ${data.log.model.replace('claude-','').replace('-2025','')}`:'';
   }catch(e){loadEl.querySelector('.msg-bubble').innerHTML=`<span class="no-data">${esc(e.message)}</span>`;}
   finally{isLoading=false;cmSend.disabled=false;cmInput.focus();}
 }

@@ -83,6 +83,11 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .m-lbl{font-size:.64rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
 .log-box{background:#060f1a;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:.7rem;font-family:monospace;color:#80b0c8;line-height:1.6}
 .lk{color:var(--accent)}.lv{color:var(--text)}
+.model-row{padding:8px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-shrink:0;background:#07111c}
+.model-lbl{font-size:.68rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.model-sel{flex:1;background:#0e2a40;border:1px solid var(--accent);color:var(--text);padding:5px 8px;border-radius:6px;font-size:.76rem;cursor:pointer;outline:none}
+.model-sel:focus{border-color:var(--green)}
+.model-hint{font-size:.66rem;color:var(--green);font-weight:700;white-space:nowrap}
 .chat-fab{position:fixed;bottom:22px;right:22px;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:11px 20px;font-size:.86rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(59,158,255,.4);z-index:100;transition:transform .15s,box-shadow .15s;font-family:inherit}
 .chat-fab:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(59,158,255,.5)}
 .fab-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1.4s ease-in-out infinite}
@@ -149,6 +154,15 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
     <div class="dbg-head">
       <span class="dbg-title">AI PM — Prompt Architecture</span>
       <span class="dbg-badge">v2</span>
+    </div>
+    <div class="model-row">
+      <label class="model-lbl" for="model-select">Model</label>
+      <select id="model-select" class="model-sel">
+        <option value="claude-opus-4-6">Opus 4.6 (best)</option>
+        <option value="claude-sonnet-4-6">Sonnet 4.6 (fast)</option>
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5 (fastest)</option>
+      </select>
+      <span class="model-hint" id="model-hint"></span>
     </div>
     <div class="dbg-tabs">
       <div class="dbg-tab active" data-tab="prompt">Prompt Builder</div>
