@@ -361,7 +361,7 @@ async function sendChat(){
   const timer=setInterval(()=>{if(elapsedEl)elapsedEl.textContent=`${Math.round((Date.now()-t0)/1000)}s`;},500);
 
   // Trim events to only the fields formatContext needs — avoids 413 from large ESPN payloads
-  const useSelectedEventOnly = currentView==='event' || /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b/i.test(q);
+  const useSelectedEventOnly = currentView==='event' || /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bhere\b|\bvalue here\b/i.test(q);
   const sourceEvents = useSelectedEventOnly && selectedEvent ? [selectedEvent] : currentEvents;
   const events=sourceEvents.map(ev=>{
     const comp=ev.competitions?.[0];
@@ -443,28 +443,18 @@ async function sendChat(){
 function renderResult(r){
   if(!r)return'<span class="no-data">No result</span>';
   let h=`<div class="bet-sum">${esc(r.summary||'No summary')}</div>`;
-  h+=`<div class="bt-meta">${r.intent?`<span class="cbadge">${esc(r.intent)}</span>`:''}${r.confidence?`<span class="cbadge ${esc((r.confidence||'low').toLowerCase())}">${esc(r.confidence)}</span>`:''}${r.decision?`<span class="impl">decision: ${esc(r.decision)}</span>`:''}</div>`;
+  h+=`<div class="bt-meta">${r.confidence?`<span class="cbadge ${esc((r.confidence||'low').toLowerCase())}">${esc(r.confidence)}</span>`:''}${r.decision?`<span class="impl">decision: ${esc(r.decision)}</span>`:''}</div>`;
   if(r.insight||r.next_action){
     h+=`<div class="bet-cards">
       ${r.insight?`<div class="bet-card"><div class="bt-mkt">Insight</div><div class="bt-reason">${esc(r.insight)}</div></div>`:''}
       ${r.next_action?`<div class="bet-card"><div class="bt-mkt">Next Action</div><div class="bt-reason">${esc(r.next_action)}</div></div>`:''}
     </div>`;
   }
-  if(r.data?.events?.length){
+  if(r.bets?.length){
     h+='<div class="bet-cards">';
-    r.data.events.forEach(ev=>{
-      h+=`<div class="bet-card"><div class="bt-mkt">${esc(ev.name||'Event')}</div><div class="bt-reason">${esc(ev.status||'')}</div><div class="bt-reason">${esc(ev.recommendation||'')}</div></div>`;
-    });
-    h+='</div>';
-  }
-  if(r.data?.bets?.length){
-    h+='<div class="bet-cards">';
-    r.data.bets.forEach(b=>{
-      const c=(b.confidence||'').toLowerCase();
-      const badge=c?`<span class="cbadge ${c}">${c}</span>`:'';
-      const ev=Array.isArray(b.evidence)&&b.evidence.length?`<ul class="bt-ev">${b.evidence.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`:'';
+    r.bets.forEach(b=>{
       const odds=b.odds?`<span class="impl">${esc(b.odds)}</span>`:'';
-      h+=`<div class="bet-card"><div class="bt-mkt">${esc(b.market)}</div><div class="bt-sel">▶ ${esc(b.selection)}</div><div class="bt-meta">${badge}${odds}</div><div class="bt-reason">${esc(b.reason)}</div>${ev}</div>`;
+      h+=`<div class="bet-card"><div class="bt-mkt">${esc(b.market)}</div><div class="bt-sel">▶ ${esc(b.selection)}</div><div class="bt-meta">${odds}</div><div class="bt-reason">${esc(b.reason)}</div></div>`;
     });
     h+='</div>';
   }

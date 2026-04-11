@@ -676,7 +676,7 @@
   function renderBetResult(result) {
     if (!result) return '<span class="no-data-msg">No result</span>';
     let html = `<div class="bet-summary">${escHtml(result.summary || 'No summary')}</div>`;
-    html += `<div class="bet-meta-row">${result.intent ? `<span class="confidence-badge">${escHtml(result.intent)}</span>` : ''}${result.confidence ? `<span class="confidence-badge ${(result.confidence || '').toLowerCase()}">${escHtml(result.confidence)}</span>` : ''}${result.decision ? `<span class="implied-prob">decision: ${escHtml(result.decision)}</span>` : ''}</div>`;
+    html += `<div class="bet-meta-row">${result.confidence ? `<span class="confidence-badge ${(result.confidence || '').toLowerCase()}">${escHtml(result.confidence)}</span>` : ''}${result.decision ? `<span class="implied-prob">decision: ${escHtml(result.decision)}</span>` : ''}</div>`;
     if (result.insight || result.next_action) {
       html += '<div class="bet-cards">';
       if (result.insight) {
@@ -687,36 +687,17 @@
       }
       html += '</div>';
     }
-    if (result.data?.events?.length) {
+    if (result.bets?.length) {
       html += '<div class="bet-cards">';
-      result.data.events.forEach(ev => {
-        html += `<div class="bet-card">
-          <div class="bet-market">${escHtml(ev.name || 'Event')}</div>
-          <div class="bet-reason">${escHtml(ev.status || '')}</div>
-          <div class="bet-reason">${escHtml(ev.recommendation || '')}</div>
-        </div>`;
-      });
-      html += '</div>';
-    }
-    if (result.data?.bets?.length) {
-      html += '<div class="bet-cards">';
-      result.data.bets.forEach(bet => {
-        const conf = (bet.confidence || '').toLowerCase();
-        const confBadge = conf
-          ? `<span class="confidence-badge ${conf}">${conf}</span>`
-          : '';
+      result.bets.forEach(bet => {
         const odds = bet.odds
           ? `<span class="implied-prob">${escHtml(bet.odds)}</span>`
-          : '';
-        const evidenceItems = Array.isArray(bet.evidence) && bet.evidence.length
-          ? `<ul class="bet-evidence">${bet.evidence.map(e => `<li>${escHtml(e)}</li>`).join('')}</ul>`
           : '';
         html += `<div class="bet-card">
           <div class="bet-market">${escHtml(bet.market)}</div>
           <div class="bet-selection">▶ ${escHtml(bet.selection)}</div>
-          <div class="bet-meta-row">${confBadge}${odds}</div>
+          <div class="bet-meta-row">${odds}</div>
           <div class="bet-reason">${escHtml(bet.reason)}</div>
-          ${evidenceItems}
         </div>`;
       });
       html += '</div>';
@@ -742,7 +723,7 @@
 
     const useSelectedEventOnly =
       !!selectedEvent &&
-      /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b/i.test(query);
+      /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b|\bhere\b|\bvalue here\b/i.test(query);
     const eventsToSend = (useSelectedEventOnly ? [selectedEvent] : currentEvents.slice(0, 5)).map(ev => {
       const comp = ev.competitions?.[0];
       return {

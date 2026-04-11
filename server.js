@@ -355,7 +355,7 @@ async function createModelResponse({ model, system, userMessage, temperature, ma
 
 function classifyIntent(query = "") {
   const q = query.toLowerCase().trim();
-  if (!q) return "UNKNOWN";
+  if (!q) return "ANALYZE_EVENT";
   if (/best odds|value\b|best price|best line/.test(q)) return "FIND_BEST_ODDS";
   if (/best match|which game|best game/.test(q)) return "FIND_BEST_MATCH";
   if (/explain|what does .* mean|meaning of|how do odds work|-110|moneyline|spread|total/.test(q)) {
@@ -365,12 +365,13 @@ function classifyIntent(query = "") {
     return "FIND_EVENTS";
   }
   if (
-    /safe is the favorite|favorite|underdog|analyze|analysis|should i bet|lean|pick|take on|matchup|vs\b/.test(q) ||
+    /safe is the favorite|favorite|underdog|analyze|analysis|should i bet|lean|pick|take on|matchup|vs\b|value here|best bet|worth it/.test(q) ||
+    isEventScopedQuery(q) ||
     !!detectExplicitSportMention(q)
   ) {
     return "ANALYZE_EVENT";
   }
-  return "UNKNOWN";
+  return "ANALYZE_EVENT";
 }
 
 function detectExplicitSportMention(query = "") {
@@ -409,7 +410,7 @@ function detectExplicitSportMention(query = "") {
   return match ? match[0] : null;
 }
 
-function explainIntentDecision(query = "", intent = "UNKNOWN") {
+function explainIntentDecision(query = "", intent = "ANALYZE_EVENT") {
   const q = query.toLowerCase();
   const rules = {
     FIND_EVENTS: [/games/, /matches/, /tonight/, /today/, /tomorrow/],
@@ -427,12 +428,12 @@ function explainIntentDecision(query = "", intent = "UNKNOWN") {
     return `Intent selected: ${intent}\nReason: matched keyword rule(s) -> ${matched.join(", ")}`;
   }
 
-  return "Intent selected: UNKNOWN\nReason: no intent rule matched confidently.";
+  return "Intent selected: ANALYZE_EVENT\nReason: fallback to the most reasonable event analysis interpretation.";
 }
 
 function isEventScopedQuery(query = "") {
   const q = (query || "").toLowerCase();
-  return /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b/.test(q);
+  return /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b|\bhere\b|\bvalue here\b/.test(q);
 }
 
 function isBroaderScopeQuery(query = "") {
@@ -449,7 +450,7 @@ function getEventStatusMeta(ev = {}) {
   return { completed, statusState, statusDescription };
 }
 
-function formatContext(events = [], intent = "UNKNOWN", activeContext = {}) {
+function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}) {
   const lines = [];
   const activeLeague = activeContext.activeLeague || activeContext.activeSport || "";
   const explicitSport = detectExplicitSportMention(activeContext.userQuery || "");
@@ -518,147 +519,121 @@ function formatContext(events = [], intent = "UNKNOWN", activeContext = {}) {
 }
 
 function buildPrompt(query = "", context = "") {
-  return `1. ROLE
-You are Betsy, a sportsbook AI assistant.
+  return `You are a sports betting analyst with deep expertise in odds, probabilities, and market behavior.
 
-Your job is NOT to chat.
-Your job is to help users discover events and make betting decisions.
+Your goal is to provide clear and practical betting insights.
 
-2. DECISION ENGINE
-Classify the request into ONE of:
+You MUST always return a meaningful answer.
 
-* FIND_EVENTS
-* FIND_BEST_ODDS
-* FIND_BEST_MATCH
-* ANALYZE_EVENT
-* EXPLAIN
-* UNKNOWN
+CRITICAL FIX - REMOVE STRICT FAILURE MODES
 
-Apply rules:
+* DO NOT return "UNKNOWN"
+* DO NOT return "Could not process request"
+* DO NOT fail due to classification uncertainty
 
-* "games", "matches", "tonight" -> FIND_EVENTS
-* "best odds", "value" -> FIND_BEST_ODDS
-* "best match" -> FIND_BEST_MATCH
-* "explain" -> EXPLAIN
-* specific teams/events -> ANALYZE_EVENT
+If the query is simple or partially ambiguous:
+-> Interpret it in the most reasonable way
 
-3. CONTEXT RULES
+CONTEXT BINDING
 
-* Use ONLY provided data
-* NEVER invent data
-* If no edge -> decision = "pass"
-* If too broad -> return top 5 events
-* If unclear -> ask for clarification
+The user may be viewing a specific event.
+You are ALWAYS provided with event context.
 
-## CONTEXT PRIORITY RULES
+If the user refers to:
+* "this game"
+* "this match"
+* "this event"
+* "here"
 
-You MUST prioritize context in the following order:
+You MUST interpret it as the current event in the context.
 
-1. Event Context (highest priority)
-2. Page Context
-3. Global Context (lowest priority)
+CONTEXT PRIORITY
 
-### Event Context Rules
+* If the query refers to the current event -> ONLY use that event
+* DO NOT introduce other events
+* DO NOT expand scope unless explicitly requested
 
-- If a specific event is provided -> ALWAYS use that event
-- If the user refers to:
-  - "this game"
-  - "this match"
-  - "this event"
-  -> you MUST use ONLY the current event context
+ANALYSIS RULES
 
-- You MUST NOT introduce other events
+* Use only the provided data
+* Do not invent odds or statistics
+* Evaluate implied probability
+* Identify whether a real betting edge exists
 
-### Scope Control
+If no edge exists:
+-> decision = "pass"
 
-- If the query is about a specific event:
-  -> DO NOT expand to other events
-  -> DO NOT compare with other matches
-  -> DO NOT bring external data
+Do NOT force a bet.
 
-- Stay strictly within the event
+BETTING DISCIPLINE
 
-### Global Context Usage
+* Never guarantee outcomes
+* Never suggest stake sizes
+* Avoid speculative reasoning
+* Prefer PASS over weak or unclear bets
 
-- Use global data ONLY when:
-  - The query is generic ("games tonight", "best bets today")
-  - The user explicitly asks for broader scope
+INTERPRETATION RULES
 
-### Examples
+For queries like:
+* "what's the best bet for this game"
+* "is the favorite safe"
+* "any value here"
 
-- "best bet for this game" -> ONLY current event
-- "odds for this match" -> ONLY current event
-- "games tonight" -> global context
-- "best bets today" -> global context
+You MUST:
+-> treat them as event analysis requests
+-> analyze the current event
 
-## EVENT VALIDATION RULES
+DO NOT require explicit structured input.
 
-- If an event is completed -> it is NOT actionable
-- DO NOT suggest bets for completed events
-- DO NOT analyze completed events as opportunities
+EVENT VALIDATION RULES
 
-If the event is finished:
-- decision = "pass"
-- Explain clearly that betting is no longer available
-- DO NOT reference other events as fallback
+* If an event is completed -> it is NOT actionable
+* DO NOT suggest bets for completed events
+* DO NOT analyze completed events as opportunities
+* If the event is finished -> decision = "pass"
+* Explain clearly that betting is no longer available
+* DO NOT reference other events as fallback
 
-## DECISION DISCIPLINE
+RESPONSE BEHAVIOR
 
-If the query is tied to a specific event:
-
-- You MUST remain within that event
-- If no betting value exists -> return "pass"
-- DO NOT expand scope to find alternatives
-- DO NOT introduce unrelated matches
-
-It is better to return PASS than to provide irrelevant suggestions
-
-4. BETTING RULES
-
-* No guarantees
-* No stake suggestions
-* No aggressive encouragement
-* Prefer PASS over weak bets
-
-5. OUTPUT PROTOCOL
+* Interpret naturally
+* Always provide a useful answer
+* Stay concise and actionable
+* Avoid repeating unnecessary data
 
 Return ONLY valid JSON:
-
 {
-  "intent": "...",
-  "decision": "bet | lean | pass | explore",
+  "decision": "bet | lean | pass",
   "confidence": "low | medium | high",
-  "summary": "...",
-  "insight": "...",
-  "next_action": "...",
-  "data": {
-    "events": [],
-    "bets": []
-  }
+  "summary": "short explanation",
+  "insight": "key takeaway",
+  "next_action": "recommended next step",
+  "bets": [
+    {
+      "market": "...",
+      "selection": "...",
+      "odds": "...",
+      "reason": "..."
+    }
+  ]
 }
 
-6. CONTEXT
-
+CONTEXT
 ${context}
 
-7. USER QUERY
-
+USER QUERY
 ${query}`;
 }
 
 function buildPromptPayload(userQuery, formattedContext) {
   const detectedIntent = classifyIntent(userQuery);
   const outputFormat = `{
-  "intent": "...",
-  "decision": "bet | lean | pass | explore",
+  "decision": "bet | lean | pass",
   "confidence": "low | medium | high",
   "summary": "...",
   "insight": "...",
   "next_action": "...",
-  "data": {
-    "events": [],
-    "bets": []
-  }
+  "bets": []
 }`;
 
   return {
@@ -677,15 +652,7 @@ function buildPromptPayload(userQuery, formattedContext) {
 }
 
 const VALID_CONFIDENCE = new Set(["high", "medium", "low"]);
-const VALID_DECISIONS = new Set(["bet", "lean", "pass", "explore"]);
-const VALID_INTENTS = new Set([
-  "FIND_EVENTS",
-  "FIND_BEST_ODDS",
-  "FIND_BEST_MATCH",
-  "ANALYZE_EVENT",
-  "EXPLAIN",
-  "UNKNOWN",
-]);
+const VALID_DECISIONS = new Set(["bet", "lean", "pass"]);
 
 function normalizeBet(bet = {}) {
   return {
@@ -693,30 +660,17 @@ function normalizeBet(bet = {}) {
     selection: typeof bet.selection === "string" ? bet.selection : "",
     odds: typeof bet.odds === "string" ? bet.odds : "",
     reason: typeof bet.reason === "string" ? bet.reason : "",
-    confidence: VALID_CONFIDENCE.has((bet.confidence || "").toLowerCase())
-      ? bet.confidence.toLowerCase()
-      : "low",
-    evidence: Array.isArray(bet.evidence) ? bet.evidence.map(String).slice(0, 5) : [],
-  };
-}
-
-function normalizeEvent(event = {}) {
-  return {
-    name: typeof event.name === "string" ? event.name : "",
-    status: typeof event.status === "string" ? event.status : "",
-    recommendation: typeof event.recommendation === "string" ? event.recommendation : "",
   };
 }
 
 function safeFallbackResponse() {
   return {
-    intent: "UNKNOWN",
-    decision: "explore",
+    decision: "pass",
     confidence: "low",
-    summary: "Could not process request",
-    insight: "Try rephrasing",
-    next_action: "Ask a simpler question",
-    data: { events: [], bets: [] },
+    summary: "No clear betting edge from the available context.",
+    insight: "The available event data does not justify a stronger recommendation.",
+    next_action: "Check the current market prices or ask about a specific side, total, or moneyline.",
+    bets: [],
   };
 }
 
@@ -725,20 +679,20 @@ function parseResponse(text = "") {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No JSON block found in response");
     const parsed = JSON.parse(match[0]);
-    if (!VALID_INTENTS.has(parsed.intent)) parsed.intent = "UNKNOWN";
-    if (!VALID_DECISIONS.has(parsed.decision)) parsed.decision = "explore";
+    if (!VALID_DECISIONS.has(parsed.decision)) parsed.decision = "pass";
     parsed.confidence = VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())
       ? parsed.confidence.toLowerCase()
       : "low";
     for (const key of ["summary", "insight", "next_action"]) {
       if (typeof parsed[key] !== "string") throw new Error(`Missing ${key}`);
     }
-    if (!parsed.data || typeof parsed.data !== "object") parsed.data = {};
-    parsed.data.events = Array.isArray(parsed.data.events)
-      ? parsed.data.events.map(normalizeEvent).slice(0, 5)
-      : [];
-    parsed.data.bets = Array.isArray(parsed.data.bets)
-      ? parsed.data.bets.map(normalizeBet).slice(0, 5)
+    const rawBets = Array.isArray(parsed.bets)
+      ? parsed.bets
+      : Array.isArray(parsed.data?.bets)
+        ? parsed.data.bets
+        : [];
+    parsed.bets = rawBets
+      ? rawBets.map(normalizeBet).slice(0, 5)
       : [];
     return { valid: true, data: parsed };
   } catch (err) {
