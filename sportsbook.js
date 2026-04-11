@@ -235,6 +235,22 @@ function addMsg(role,html,meta=''){
 
 async function sendChat(){
   const q=cmInput.value.trim();if(!q||isLoading)return;
+
+  // Re-verify server before sending (state may have changed)
+  if(!serverOnline) serverOnline=await checkServer();
+
+  if(!serverOnline){
+    addMsg('assistant',
+      `<strong style="color:var(--warn)">⚠ AI server required</strong><br><br>
+      The AI assistant needs the Node.js backend to call Claude.<br><br>
+      <strong>Run locally:</strong><br>
+      <code style="background:#060f1a;padding:2px 6px;border-radius:4px;font-size:.8rem">npm install && node server.js</code><br><br>
+      Then open <code style="background:#060f1a;padding:2px 6px;border-radius:4px;font-size:.8rem">http://localhost:3000</code><br><br>
+      Or deploy to Render with your <code style="background:#060f1a;padding:2px 6px;border-radius:4px;font-size:.8rem">ANTHROPIC_API_KEY</code>.`,
+      'System'
+    );
+    return;
+  }
   isLoading=true;cmSend.disabled=true;cmInput.value='';
   addMsg('user',esc(q),'You');
   const loadEl=addMsg('assistant','<span class="spinner">Bet Assistance is thinking…</span>');
@@ -308,7 +324,15 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 async function init(){
   serverOnline=await checkServer();
   srvDot.className=serverOnline?'on':'off';
-  srvDot.title=serverOnline?'Server: online':'Server: offline (ESPN direct mode)';
+  const srvLbl=document.getElementById('srv-lbl');
+  if(srvLbl)srvLbl.textContent=serverOnline?'AI online':'AI offline';
+
+  // Show offline notice in chat context strip
+  if(!serverOnline){
+    ctxStrip.innerHTML=
+      '<span style="color:var(--warn)">⚠ AI offline — ESPN events load fine. Run <code>node server.js</code> for AI chat.</span>';
+  }
+
   renderTabs();
   await loadSport(currentSport);
   fetchCounts();
