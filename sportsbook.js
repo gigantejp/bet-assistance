@@ -259,16 +259,32 @@ async function sendChat(){
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
     const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
-    const data=await safeJson(r);
+    const ct=r.headers.get('content-type')||'';
+    // Server returned HTML — likely a proxy timeout (Render 30s limit) or cold start
+    if(!ct.includes('application/json')){
+      const msg=r.status>=500
+        ?`Request timed out (HTTP ${r.status}). The AI is warming up — please try again in a moment.`
+        :`Unexpected server response (HTTP ${r.status}). Please try again.`;
+      throw new Error(msg);
+    }
+    const data=await r.json();
+    if(data.error) throw new Error(`Server error: ${data.error}`);
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
-    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms`;
+    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${(data.log?.model||model).replace('claude-','')}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
     const hint=document.getElementById('model-hint');
     if(hint)hint.textContent=data.log?.model?`✓ ${data.log.model.replace('claude-','').replace('-2025','')}`:'';
-  }catch(e){loadEl.querySelector('.msg-bubble').innerHTML=`<span class="no-data">${esc(e.message)}</span>`;}
+  }catch(e){
+    // Re-check real server status so the badge stays accurate
+    serverOnline=await checkServer();
+    const srvLbl=document.getElementById('srv-lbl');
+    if(srvLbl)srvLbl.textContent=serverOnline?'AI online':'AI offline';
+    srvDot.className=serverOnline?'on':'off';
+    loadEl.querySelector('.msg-bubble').innerHTML=`<span class="no-data">⚠ ${esc(e.message)}</span>`;
+  }
   finally{isLoading=false;cmSend.disabled=false;cmInput.focus();}
 }
 
