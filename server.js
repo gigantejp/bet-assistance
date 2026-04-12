@@ -216,7 +216,7 @@ app.post("/chat", async (req, res) => {
 
 const PROMPT_SYSTEM = {
   version: "v3",
-  text: "You are Betsy. Follow the prompt exactly and return only valid JSON.",
+  text: "You are an expert in sports betting analysis and your goal is to answer the user's question. Follow the prompt exactly and return only valid JSON.",
 };
 
 // Demo odds table (ESPN doesn't expose real odds)
