@@ -732,6 +732,40 @@ app.post("/api/assistant/chat", async (req, res) => {
     res.end();
   };
 
+  // Short-circuit for FIND_EVENTS — no LLM needed, build list from resolved events
+  if (intent === "FIND_EVENTS") {
+    const sportLabel = (resolvedSport || activeSport || activeLeague || "").toUpperCase() || "Today's";
+    const gameLines = resolvedEvents.slice(0, 8).map((ev, i) => {
+      const comp = ev.competitions?.[0];
+      const competitors = comp?.competitors || [];
+      const away = competitors.find(c => c.homeAway === "away") || competitors[0];
+      const home = competitors.find(c => c.homeAway === "home") || competitors[1];
+      const awayName = away?.team?.displayName || "Away";
+      const homeName = home?.team?.displayName || "Home";
+      const detail = comp?.status?.type?.shortDetail || "Scheduled";
+      return `${i + 1}. ${awayName} vs ${homeName} (${detail})`;
+    });
+
+    return finish({
+      result: {
+        decision: "explore",
+        confidence: "high",
+        summary: `${sportLabel} games today — ${gameLines.length} found`,
+        insight: gameLines.join("\n"),
+        next_action: "Select a game to analyze odds or ask about a specific matchup",
+        bets: [],
+      },
+      raw: "",
+      log: {
+        intent,
+        sport_resolved: resolvedSport,
+        latency_ms: Date.now() - startTime,
+        short_circuit: true,
+      },
+      debug: { sections, version },
+    });
+  }
+
   let lastError = null;
 
   // Fallback: retry once on invalid output
