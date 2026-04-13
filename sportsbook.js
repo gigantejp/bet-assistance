@@ -462,20 +462,28 @@ function renderResult(r){
 }
 
 // DEBUG PANEL
+const DBG_TABS=['prompt','full','metrics'];
 document.querySelectorAll('.dbg-tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.dbg-tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
   const tab=t.dataset.tab;
-  document.getElementById('tab-prompt').style.display=tab==='prompt'?'':'none';
-  document.getElementById('tab-metrics').style.display=tab==='metrics'?'':'none';
+  DBG_TABS.forEach(id=>{const el=document.getElementById(`tab-${id}`);if(el)el.style.display=tab===id?'':'none';});
 }));
 
 function updatePrompt(secs,ver){
+  // Sections panel
   document.getElementById('prompt-ph').style.display='none';
   document.getElementById('prompt-secs').style.display='';
   document.getElementById('vtag').textContent=ver||'v2';
   setCode('s-sys',secs.systemPrompt);setCode('s-int',secs.intentDecision||secs.detectedIntent);
   setCode('s-ctx',secs.contextData);
   setCode('s-usr',secs.userInput);setCode('s-out',secs.outputFormat);
+  // Full prompt panel — assemble exactly what the LLM received
+  const fullSysTxt=secs.fullPromptSystem||secs.systemPrompt||'';
+  const fullUsrTxt=secs.fullPromptUser||[secs.contextData,secs.userInput&&`\nUSER QUERY\n${secs.userInput}`,secs.outputFormat].filter(Boolean).join('\n\n');
+  document.getElementById('full-ph').style.display='none';
+  document.getElementById('full-secs').style.display='';
+  setCode('s-full-sys',fullSysTxt);
+  setCode('s-full-usr',fullUsrTxt);
 }
 function setCode(id,txt){
   const el=document.getElementById(id);if(!el)return;
