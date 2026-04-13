@@ -92,6 +92,13 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .vtag{font-size:.62rem;background:#1a0a2e;color:var(--purple);border:1px solid #2a1050;padding:1px 5px;border-radius:3px;margin-left:4px}
 .code-block{background:#060f1a;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.68rem;color:#a0c8e0;white-space:pre-wrap;word-break:break-word;line-height:1.5;max-height:110px;overflow-y:auto}
 .full-code{max-height:340px;font-size:.67rem}
+.model-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gate-sel{max-width:110px}
+.gate-decision-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:7px 10px;background:#060f1a;border:1px solid var(--line);border-radius:6px;font-size:.68rem}
+.gd-item{display:flex;flex-direction:column;gap:1px}
+.gd-lbl{color:var(--muted);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em}
+.gd-val{font-weight:700;color:var(--accent)}
+.gd-val.ok{color:var(--green)}.gd-val.blocked{color:var(--warn)}
 .code-block.empty{color:var(--muted);font-style:italic;font-family:inherit}
 .ph-msg{color:var(--muted);font-size:.78rem;text-align:center;padding:20px 12px;line-height:1.6}
 .ph-msg strong{color:var(--accent);display:block;margin-bottom:6px;font-size:.82rem}
@@ -178,7 +185,19 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
       <span class="dbg-badge">v2</span>
     </div>
     <div class="model-row">
-      <label class="model-lbl" for="model-select">Model</label>
+      <label class="model-lbl">Gate</label>
+      <select id="gate-model-select" class="model-sel gate-sel">
+        <optgroup label="Anthropic">
+        <option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option>
+        <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+        <option value="claude-opus-4-6">Opus 4.6</option>
+        </optgroup>
+        <optgroup label="OpenAI">
+        <option value="gpt-4o-mini">GPT-4o Mini</option>
+        <option value="gpt-4o">GPT-4o</option>
+        </optgroup>
+      </select>
+      <label class="model-lbl" for="model-select">Analysis</label>
       <select id="model-select" class="model-sel">
         <optgroup label="Anthropic">
         <option value="claude-opus-4-6">Opus 4.6 (best)</option>
@@ -223,6 +242,7 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
     <div class="dbg-tabs">
       <div class="dbg-tab active" data-tab="prompt">Prompt Builder</div>
       <div class="dbg-tab" data-tab="full">Full Prompt</div>
+      <div class="dbg-tab" data-tab="gate">Intent Gate</div>
       <div class="dbg-tab" data-tab="metrics">Metrics</div>
     </div>
     <div class="dbg-body">
@@ -249,6 +269,24 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
           <div class="ps">
             <div class="sl usr"><span class="sn">USR</span> User Message</div>
             <div class="code-block full-code" id="s-full-usr"></div>
+          </div>
+        </div>
+      </div>
+      <div id="tab-gate" style="display:none">
+        <div class="ph-msg" id="gate-ph"><strong>Intent Gate</strong><br>Gate classification will appear here after the first response.</div>
+        <div id="gate-secs" style="display:none">
+          <div class="gate-decision-row" id="gate-decision-row"></div>
+          <div class="ps">
+            <div class="sl sys"><span class="sn">SYS</span> Gate System Prompt <span class="vtag" id="gate-model-tag"></span></div>
+            <div class="code-block full-code" id="s-gate-sys"></div>
+          </div>
+          <div class="ps">
+            <div class="sl usr"><span class="sn">USR</span> Gate User Message</div>
+            <div class="code-block" id="s-gate-usr"></div>
+          </div>
+          <div class="ps">
+            <div class="sl out"><span class="sn">OUT</span> Gate Raw Response</div>
+            <div class="code-block" id="s-gate-out"></div>
           </div>
         </div>
       </div>

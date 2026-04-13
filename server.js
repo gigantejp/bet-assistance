@@ -232,6 +232,66 @@ EVENT VALIDATION
 OUTPUT: return ONLY valid JSON — no text outside the JSON block.`,
 };
 
+// ─── INTENT GATE ─────────────────────────────────────────────────────────────
+// Two-stage architecture: Gate classifies + authorises, Analysis LLM responds.
+// The gate runs first; blocked queries never reach the analysis LLM.
+
+const GATE_SYSTEM = `You are an intent classifier for a sports betting assistant.
+Return ONLY valid JSON — no other text.
+
+INTENTS:
+ANALYZE_EVENT   = wants analysis/recommendation for a specific game
+FIND_BEST_ODDS  = wants best value odds across multiple games
+FIND_BEST_MATCH = wants to know which game is best to bet
+FIND_EVENTS     = wants to see a list of games or the schedule
+EXPLAIN         = wants explanation of a betting concept or term
+ACCOUNT         = account, balance, deposits, withdrawals
+BETSLIP         = bet slip, pending bets, open wagers
+RG_INFO         = responsible gambling, limits, self-exclusion
+OFF_TOPIC       = not related to sports or betting
+MANIPULATION    = guaranteed wins, fixed matches, fraud
+
+CONTEXT_NEEDED: "event" | "league" | "all_events" | "none"
+RESPONSE_TYPE:  "bet_analysis" | "odds_comparison" | "game_list" | "explanation" | "navigation" | "static"
+
+Block OFF_TOPIC and MANIPULATION (allowed:false). Allow all others.
+
+{"intent":"...","allowed":true,"block_reason":null,"context_needed":"...","response_type":"..."}`;
+
+async function runIntentGate(userQuery, model) {
+  const userMessage = `Classify: "${userQuery}"`;
+  const t0 = Date.now();
+  try {
+    const resp = await createModelResponse({
+      model,
+      system: GATE_SYSTEM,
+      userMessage,
+      temperature: 0,
+      maxTokens: 100,
+    });
+    const raw = resp.rawText || "";
+    let result = null;
+    try {
+      const m = raw.match(/\{[\s\S]*\}/);
+      result = JSON.parse(m ? m[0] : raw);
+    } catch { /* fall through to fallback */ }
+
+    if (!result?.intent) {
+      result = { intent: classifyIntent(userQuery), allowed: true, block_reason: null, context_needed: "all_events", response_type: "bet_analysis" };
+    }
+    return {
+      result,
+      debug: { model, systemPrompt: GATE_SYSTEM, userMessage, rawResponse: raw, latency_ms: Date.now() - t0, tokens: resp.usage },
+    };
+  } catch (err) {
+    // Gate failure → fallback to regex, allow through
+    return {
+      result: { intent: classifyIntent(userQuery), allowed: true, block_reason: null, context_needed: "all_events", response_type: "bet_analysis" },
+      debug: { model, systemPrompt: GATE_SYSTEM, userMessage, rawResponse: `[Gate error: ${err.message}]`, latency_ms: Date.now() - t0, fallback: true },
+    };
+  }
+}
+
 // Demo odds bank — 8 entries, mirrors sportsbook.js OB table so AI sees what users see.
 // [away_ml, home_ml, spread, away_spread_juice, home_spread_juice, draw]
 const OB_BANK = [
@@ -681,14 +741,15 @@ async function generateAIResponse(query, context, model, intent) {
 }
 
 // POST /api/assistant/chat
-// Body: { userQuery: string, events: ESPN_Event[], model?: string }
-// Returns: SSE stream — keepalive comments every 5s, then a single "data:" JSON event
-// This prevents Render's 30-second proxy timeout from killing slow model calls.
+// Body: { userQuery, events, model, intentModel, activeSport, activeLeague, selectedEventId, currentView }
+// Returns: SSE stream — keepalive comments every 5s, then a single "data:" JSON event.
+// Two-stage architecture: intentModel runs the Gate first, then model runs Analysis.
 app.post("/api/assistant/chat", async (req, res) => {
   const {
     userQuery,
     events = [],
     model: reqModel,
+    intentModel: reqIntentModel,
     activeSport = "",
     activeLeague = "",
     selectedEventId = null,
@@ -699,13 +760,43 @@ app.post("/api/assistant/chat", async (req, res) => {
     return;
   }
 
-  const model = ALLOWED_MODELS.has(reqModel) ? reqModel : DEFAULT_MODEL;
-  const provider = getModelProvider(model);
-  const intent = classifyIntent(userQuery);
-  const startTime = Date.now();
+  const model       = ALLOWED_MODELS.has(reqModel)       ? reqModel       : DEFAULT_MODEL;
+  const intentModel = ALLOWED_MODELS.has(reqIntentModel) ? reqIntentModel : "claude-haiku-4-5-20251001";
+  const provider    = getModelProvider(model);
+  const startTime   = Date.now();
 
-  // LEAGUE_CONTEXT: if user explicitly mentions a different sport, fetch it server-side.
-  // This allows "list NBA games" while viewing MLB to return actual NBA data.
+  // Open SSE immediately — prevents Render's 30s proxy timeout during gate + analysis
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const keepalive = setInterval(() => res.write(":keepalive\n\n"), 5000);
+  const finish = (payload) => {
+    clearInterval(keepalive);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    res.end();
+  };
+
+  // ── STAGE 1: Intent Gate ─────────────────────────────────────────────────
+  const gate = await runIntentGate(userQuery, intentModel);
+  const intent = gate.result.intent;
+
+  if (!gate.result.allowed) {
+    return finish({
+      result: {
+        decision: "pass", confidence: "high",
+        summary: "Request not supported",
+        insight: gate.result.block_reason || "This type of query is not supported.",
+        next_action: "Ask about upcoming games, odds, or betting concepts.",
+        bets: [],
+      },
+      raw: "", log: { intent, latency_ms: Date.now() - startTime, blocked: true },
+      debug: { gate: gate.debug, analysis: null },
+    });
+  }
+
+  // ── LEAGUE_CONTEXT: server-fetch when user mentions a different sport ────
   const explicitSport = detectExplicitSportMention(userQuery);
   let resolvedEvents = events;
   let resolvedSport  = activeSport;
@@ -713,7 +804,6 @@ app.post("/api/assistant/chat", async (req, res) => {
   if (explicitSport && explicitSport !== activeSport) {
     const espnData = await espnFetch(explicitSport);
     if (espnData?.events?.length) {
-      // Trim to same shape the client sends
       resolvedEvents = espnData.events.slice(0, 10).map(ev => {
         const comp = ev.competitions?.[0];
         return {
@@ -724,10 +814,8 @@ app.post("/api/assistant/chat", async (req, res) => {
               team: { displayName: c.team?.displayName },
             })),
             status: { type: {
-              state:       comp?.status?.type?.state,
-              completed:   comp?.status?.type?.completed,
-              description: comp?.status?.type?.description,
-              shortDetail: comp?.status?.type?.shortDetail,
+              state: comp?.status?.type?.state, completed: comp?.status?.type?.completed,
+              description: comp?.status?.type?.description, shortDetail: comp?.status?.type?.shortDetail,
             }},
           }],
         };
@@ -737,66 +825,32 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   const formattedContext = formatContext(resolvedEvents, intent, {
-    activeSport:     resolvedSport,
-    activeLeague,
-    selectedEventId,
-    currentView,
-    userQuery,
+    activeSport: resolvedSport, activeLeague, selectedEventId, currentView, userQuery,
   });
   const { sections, version } = buildPromptPayload(userQuery, formattedContext, intent);
+  const analysisDebug = { sections, version };
 
-  // SSE setup — keeps Render's 30s proxy alive indefinitely
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders();
-
-  // Ping every 5s so the proxy doesn't close the connection
-  const keepalive = setInterval(() => {
-    res.write(":keepalive\n\n");
-  }, 5000);
-
-  const finish = (payload) => {
-    clearInterval(keepalive);
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    res.end();
-  };
-
-  // Static short-circuits — no LLM, instant response
+  // ── STAGE 1b: Static short-circuits (no analysis LLM needed) ────────────
   const STATIC_RESPONSES = {
-    ACCOUNT: {
-      decision: "explore", confidence: "high",
-      summary: "Account management",
-      insight: "Deposits, withdrawals, bet history, and profile settings are all available in the My Account section (top right corner of the site).",
-      next_action: "Click 'My Account' to manage your account",
-      bets: [],
-    },
-    BETSLIP: {
-      decision: "explore", confidence: "high",
-      summary: "Your bet slip",
-      insight: "Open bets and pending wagers appear in the Bet Slip panel. You can review selections, adjust stakes, and confirm bets there.",
-      next_action: "Open the Bet Slip panel to view your current selections",
-      bets: [],
-    },
-    RG_INFO: {
-      decision: "explore", confidence: "high",
-      summary: "Responsible gambling resources",
-      insight: "You can set deposit limits, cooling-off periods, or self-exclusion in Responsible Gambling settings. For immediate support: call 1-800-522-4700 (NCPG) or visit ncpgambling.org.",
-      next_action: "Visit Responsible Gambling in account settings",
-      bets: [],
-    },
+    ACCOUNT: { decision: "explore", confidence: "high", summary: "Account management",
+      insight: "Deposits, withdrawals, bet history, and profile settings are available in My Account (top right).",
+      next_action: "Click 'My Account' to manage your account", bets: [] },
+    BETSLIP: { decision: "explore", confidence: "high", summary: "Your bet slip",
+      insight: "Open bets and pending wagers appear in the Bet Slip panel. Review selections, adjust stakes, and confirm bets there.",
+      next_action: "Open the Bet Slip panel to view your current selections", bets: [] },
+    RG_INFO: { decision: "explore", confidence: "high", summary: "Responsible gambling resources",
+      insight: "Set deposit limits, cooling-off periods, or self-exclusion in Responsible Gambling settings. Support: 1-800-522-4700 (NCPG).",
+      next_action: "Visit Responsible Gambling in account settings", bets: [] },
   };
 
   if (STATIC_RESPONSES[intent]) {
     return finish({
-      result: STATIC_RESPONSES[intent],
-      raw: "",
+      result: STATIC_RESPONSES[intent], raw: "",
       log: { intent, latency_ms: Date.now() - startTime, short_circuit: true },
-      debug: { sections, version },
+      debug: { gate: gate.debug, analysis: analysisDebug },
     });
   }
 
-  // Short-circuit for FIND_EVENTS — no LLM needed, build list from resolved events
   if (intent === "FIND_EVENTS") {
     const sportLabel = (resolvedSport || activeSport || activeLeague || "").toUpperCase() || "Today's";
     const gameLines = resolvedEvents.slice(0, 8).map((ev, i) => {
@@ -804,35 +858,24 @@ app.post("/api/assistant/chat", async (req, res) => {
       const competitors = comp?.competitors || [];
       const away = competitors.find(c => c.homeAway === "away") || competitors[0];
       const home = competitors.find(c => c.homeAway === "home") || competitors[1];
-      const awayName = away?.team?.displayName || "Away";
-      const homeName = home?.team?.displayName || "Home";
       const detail = comp?.status?.type?.shortDetail || "Scheduled";
-      return `${i + 1}. ${awayName} vs ${homeName} (${detail})`;
+      return `${i + 1}. ${(away?.team?.displayName || "Away")} vs ${(home?.team?.displayName || "Home")} (${detail})`;
     });
-
     return finish({
-      result: {
-        decision: "explore",
-        confidence: "high",
+      result: { decision: "explore", confidence: "high",
         summary: `${sportLabel} games today — ${gameLines.length} found`,
         insight: gameLines.join("\n"),
         next_action: "Select a game to analyze odds or ask about a specific matchup",
-        bets: [],
-      },
+        bets: [] },
       raw: "",
-      log: {
-        intent,
-        sport_resolved: resolvedSport,
-        latency_ms: Date.now() - startTime,
-        short_circuit: true,
-      },
-      debug: { sections, version },
+      log: { intent, sport_resolved: resolvedSport, latency_ms: Date.now() - startTime, short_circuit: true },
+      debug: { gate: gate.debug, analysis: analysisDebug },
     });
   }
 
+  // ── STAGE 2: Analysis LLM ────────────────────────────────────────────────
   let lastError = null;
 
-  // Fallback: retry once on invalid output
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const response = await generateAIResponse(userQuery, formattedContext, model, intent);
@@ -841,7 +884,6 @@ app.post("/api/assistant/chat", async (req, res) => {
       const rawText = response.rawText || "";
       const validation = parseResponse(rawText);
 
-      // 8. Logging
       const log = {
         prompt_size_tokens: response.usage.input_tokens,
         response_size_tokens: response.usage.output_tokens,
@@ -849,33 +891,24 @@ app.post("/api/assistant/chat", async (req, res) => {
         cache_write_tokens: response.usage.cache_creation_input_tokens || 0,
         model: response.model,
         model_requested: model,
-        provider,
-        latency_ms: latency,
-        success: validation.valid,
-        prompt_version: version,
-        intent,
+        intent_model: intentModel,
+        provider, latency_ms: latency, success: validation.valid,
+        prompt_version: version, intent,
         sport_requested: explicitSport || activeSport,
-        sport_resolved:  resolvedSport,
+        sport_resolved: resolvedSport,
         context_fetched: explicitSport !== null && explicitSport !== activeSport,
+        gate_latency_ms: gate.debug.latency_ms,
         attempt,
       };
 
       console.log("[ASSISTANT]", JSON.stringify(log));
 
-      // retry if invalid and we have attempts left
-      if (!validation.valid && attempt < 2) {
-        lastError = validation.error;
-        continue;
-      }
+      if (!validation.valid && attempt < 2) { lastError = validation.error; continue; }
 
       return finish({
-        result: validation.valid
-          ? validation.data
-          : safeFallbackResponse(),
-        raw: rawText,
-        log,
-        // Debug payload — exposes the 4 prompt sections for the AI PM demo UI
-        debug: { sections, version },
+        result: validation.valid ? validation.data : safeFallbackResponse(),
+        raw: rawText, log,
+        debug: { gate: gate.debug, analysis: analysisDebug },
       });
     } catch (err) {
       lastError = err.message;
