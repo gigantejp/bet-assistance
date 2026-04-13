@@ -30,10 +30,12 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .league-label:first-child{padding-top:0}
 .tbl-header{display:grid;grid-template-columns:1fr 128px 128px 104px;border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;overflow:hidden;background:#091827}
 .tbl-header.sg{grid-template-columns:1fr 176px 128px 104px}
+.tbl-header.mlb-league{grid-template-columns:1fr 1.5fr}
 .th{padding:6px 10px;font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;text-align:center;border-left:1px solid var(--line)}
 .th:first-child{text-align:left;border-left:none}
 .ev-row{display:grid;grid-template-columns:1fr 128px 128px 104px;border:1px solid var(--line);border-top:none;background:var(--line);gap:1px;cursor:pointer}
 .ev-row.sg{grid-template-columns:1fr 176px 128px 104px}
+.ev-row.mlb-league{grid-template-columns:1fr 1.5fr}
 .ev-row:last-child{border-radius:0 0 10px 10px;overflow:hidden}
 .ev-row:hover .ev-cell,.ev-row:hover .mkt-cell{background:#0f2540}
 .ev-row.sel .ev-cell,.ev-row.sel .mkt-cell{background:#0b2442}
@@ -48,6 +50,19 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .sc{font-size:.82rem;font-weight:800;color:var(--green);margin-left:auto}
 .mkt-cell{background:var(--panel);display:flex;flex-direction:column;gap:1px}
 .mkt-cell.tw{flex-direction:row}
+.mkt-cell.mlb-market-cell{padding:8px;gap:8px;background:var(--panel)}
+.mlb-market-mini{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0b1a2a}
+.mlb-market-name{padding:4px 6px;font-size:.62rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line)}
+.mlb-market-opts{display:grid;grid-template-columns:1fr 1fr;gap:1px}
+.event-page{display:flex;flex-direction:column;gap:12px}
+.event-back{align-self:flex-start}
+.event-hero{background:#091827;border:1px solid var(--line);border-radius:10px;padding:12px}
+.event-title{font-size:1.2rem;font-weight:800}
+.event-sub{font-size:.82rem;color:var(--muted);margin-top:4px}
+.event-market-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.event-market-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.event-market-card h4{font-size:.76rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.event-market-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
 .odd-btn{flex:1;background:#091827;border:none;cursor:pointer;padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:background .1s;font-family:inherit}
 .odd-btn:hover{background:#0e2540}.odd-btn.sel{background:#0e2e52;border-left:2px solid var(--accent)}
 .odd-line{font-size:.72rem;color:var(--muted);white-space:nowrap}
@@ -69,6 +84,7 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .ps{margin-bottom:10px}
 .sl{font-size:.64rem;text-transform:uppercase;letter-spacing:.1em;padding:2px 7px;border-radius:3px;margin-bottom:5px;display:inline-flex;align-items:center;gap:4px}
 .sl.sys{background:#1a0a2e;color:var(--purple);border:1px solid #2a1050}
+.sl.int{background:#102410;color:#7cf29a;border:1px solid #1f5a2e}
 .sl.ctx{background:#0a1e2e;color:var(--accent);border:1px solid #1a3a50}
 .sl.usr{background:#0a2010;color:var(--green);border:1px solid #1a4020}
 .sl.out{background:#1e1400;color:var(--warn);border:1px solid #3a2800}
@@ -163,9 +179,43 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
     <div class="model-row">
       <label class="model-lbl" for="model-select">Model</label>
       <select id="model-select" class="model-sel">
+        <optgroup label="Anthropic">
         <option value="claude-opus-4-6">Opus 4.6 (best)</option>
         <option value="claude-sonnet-4-6">Sonnet 4.6 (fast)</option>
         <option value="claude-haiku-4-5-20251001">Haiku 4.5 (fastest)</option>
+        <option value="claude-opus-4-1-20250805">Claude Opus 4.1 (snapshot)</option>
+        <option value="claude-opus-4-1">Claude Opus 4.1</option>
+        <option value="claude-opus-4-20250514">Claude Opus 4.0 (snapshot)</option>
+        <option value="claude-opus-4-0">Claude Opus 4.0</option>
+        <option value="claude-sonnet-4-20250514">Claude Sonnet 4.0 (snapshot)</option>
+        <option value="claude-sonnet-4-0">Claude Sonnet 4.0</option>
+        <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet (snapshot)</option>
+        <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
+        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (snapshot)</option>
+        <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
+        <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (snapshot)</option>
+        <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku</option>
+        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+        </optgroup>
+        <optgroup label="OpenAI">
+        <option value="gpt-5.4">GPT-5.4</option>
+        <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+        <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
+        <option value="gpt-5.2">GPT-5.2</option>
+        <option value="gpt-5.2-codex">GPT-5.2 Codex</option>
+        <option value="gpt-5.1">GPT-5.1</option>
+        <option value="gpt-5.1-codex">GPT-5.1 Codex</option>
+        <option value="gpt-5">GPT-5</option>
+        <option value="gpt-5-mini">GPT-5 Mini</option>
+        <option value="gpt-5-nano">GPT-5 Nano</option>
+        <option value="gpt-4.1">GPT-4.1</option>
+        <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+        <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+        <option value="gpt-4o">GPT-4o</option>
+        <option value="gpt-4o-mini">GPT-4o Mini</option>
+        <option value="o4-mini">o4-mini</option>
+        <option value="gpt-4">GPT-4</option>
+        </optgroup>
       </select>
       <span class="model-hint" id="model-hint"></span>
     </div>
@@ -177,13 +227,14 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
       <div id="tab-prompt">
         <div class="ph-msg" id="prompt-ph">
           <strong>How the prompt is built</strong>
-          Click a game, then ask the AI. The 4-section prompt architecture will appear here in real time.
+          Click a game, then ask the AI. The 5-section prompt architecture will appear here in real time.
         </div>
         <div id="prompt-secs" style="display:none">
           <div class="ps"><div class="sl sys"><span class="sn">1</span> System Prompt <span class="vtag" id="vtag">v2</span></div><div class="code-block" id="s-sys"></div></div>
-          <div class="ps"><div class="sl ctx"><span class="sn">2</span> Context Data</div><div class="code-block" id="s-ctx"></div></div>
-          <div class="ps"><div class="sl usr"><span class="sn">3</span> User Input</div><div class="code-block" id="s-usr"></div></div>
-          <div class="ps"><div class="sl out"><span class="sn">4</span> Output Format</div><div class="code-block" id="s-out"></div></div>
+          <div class="ps"><div class="sl int"><span class="sn">2</span> Intent Decision</div><div class="code-block" id="s-int"></div></div>
+          <div class="ps"><div class="sl ctx"><span class="sn">3</span> Context Data</div><div class="code-block" id="s-ctx"></div></div>
+          <div class="ps"><div class="sl usr"><span class="sn">4</span> User Input</div><div class="code-block" id="s-usr"></div></div>
+          <div class="ps"><div class="sl out"><span class="sn">5</span> Output Format</div><div class="code-block" id="s-out"></div></div>
         </div>
       </div>
       <div id="tab-metrics" style="display:none">

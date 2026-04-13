@@ -1,0 +1,170 @@
+/* Bet-Assistance: Light Theme & Content Distribution */
+:root {
+    --bg-main: #ffffff;
+    --bg-alt: #f6f8fa;
+    --text-primary: #1a1a1b;
+    --text-muted: #57606a;
+    --border: #d0d7de;
+    --espn-red: #cc0000;
+    --link-blue: #0969da;
+    --header-dark: #061922;
+    --card-shadow: 0 1px 3px rgba(31,35,40,0.12);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background-color: var(--bg-alt);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+header {
+    background-color: var(--header-dark);
+    color: white;
+    padding: 12px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Distribución principal */
+.main-container {
+    display: block;
+    flex: 1;
+}
+
+/* Feed de Contenido ESPN */
+#content-feed {
+    background-color: var(--bg-main);
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.event-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Panel Lateral del Asistente */
+#ai-sidebar {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 380px;
+    height: 500px;
+    background-color: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+}
+
+#chat-history {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.bubble {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 85%;
+}
+
+.bubble-ai {
+    background-color: white;
+    border: 1px solid var(--border);
+    align-self: flex-start;
+}
+
+.bubble-user {
+    background-color: var(--link-blue);
+    color: white;
+    align-self: flex-end;
+}
+
+/* Área de Input */
+.input-container {
+    padding: 16px;
+    background: white;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+}
+
+input[type="text"] {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+button {
+    background-color: var(--link-blue);
+    color: white;
+    border: none;
+    padding: 0 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* Ventana del Prompt (Debug Panel) */
+#prompt-window {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: 300px;
+    max-height: 70vh;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 16px;
+    overflow-y: auto;
+    z-index: 999;
+}
+
+.prompt-section {
+    margin-bottom: 16px;
+}
+
+.prompt-label {
+    font-size: 0.7em;
+    font-weight: bold;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.prompt-content {
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.75em;
+    white-space: pre-wrap;
+    max-height: 150px;
+    overflow-y: auto;
+    color: var(--text-muted);
+}

@@ -49,7 +49,7 @@ const ESPN_DIRECT={
 const SOCCER=new Set(['epl','laliga','bundesliga','seriea','ligue1','ucl','uel','mls']);
 function getMarkets(k){
   if(SOCCER.has(k))return{cols:['1X2','Total Goals','Both Score'],soc:true};
-  if(k==='mlb')return{cols:['Run Line','Total','Moneyline'],soc:false};
+  if(k==='mlb')return{cols:['2-Way Markets'],soc:false,mlb:true};
   if(k==='nhl')return{cols:['Puck Line','Total','Moneyline'],soc:false};
   if(k==='ufc'||k==='bellator')return{cols:['Winner','Method','Round'],soc:false};
   if(k==='atp'||k==='wta')return{cols:['Match Winner','Set Hdcp','Total Sets'],soc:false};
@@ -79,7 +79,8 @@ function fo(n){return n>0?`+${n}`:`${n}`}
 function pc(n){return n>0?'pos':'neg'}
 
 // STATE
-let currentSport='nba',currentEvents=[],selectedEvent=null,isLoading=false,serverOnline=false;
+let currentSport='nba',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
+let latestSportRequestId=0;
 const tabCounts={};
 
 // DOM
@@ -132,20 +133,30 @@ async function fetchCounts(){
 
 // EVENTS
 async function loadSport(sport){
+  const requestId=++latestSportRequestId;
+  currentEvents=[];
+  currentLeagueName=(SPORTS.find(s=>s.key===sport)||{}).label||sport.toUpperCase();
+  selectedEvent=null;
+  currentEventIndex=null;
+  updateCtx();
   evPanel.innerHTML='<div class="state-msg loading">Loading events…</div>';
   try{
     let d;
     try{const r=await fetch(`/api/scoreboard/${sport}`,{signal:AbortSignal.timeout(4000)});d=await safeJson(r);}
     catch{const r=await fetch(ESPN_DIRECT[sport],{cache:'no-store'});d=await r.json();}
+    if(requestId!==latestSportRequestId||sport!==currentSport)return;
     currentEvents=d.events||[];
-    renderEvents(currentEvents,sport,d.leagues?.[0]?.name||'');
+    currentLeagueName=d.leagues?.[0]?.name||currentLeagueName;
+    renderEvents(currentEvents,sport,currentLeagueName);
   }catch(e){evPanel.innerHTML=`<div class="state-msg">Could not load events: ${esc(e.message)}</div>`;}
 }
 
 function renderEvents(events,sport,leagueName){
   if(!events.length){evPanel.innerHTML='<div class="state-msg">No events available right now.</div>';return;}
+  currentView='league';
   const sm=SPORTS.find(s=>s.key===sport)||{icon:'🏟️',label:sport.toUpperCase()};
-  const{cols,soc}=getMarkets(sport);
+  const{cols,soc,mlb}=getMarkets(sport);
+  if(mlb){renderBaseballLeague(events,leagueName,sm);return;}
   const gc=soc?'sg':'';
   let html=`<div class="league-label">${sm.icon} ${esc(leagueName||sm.label)}</div>`;
   html+=`<div class="tbl-header ${gc}"><div class="th">Event</div><div class="th">${esc(cols[0])}</div><div class="th">${esc(cols[1])}</div><div class="th">${esc(cols[2])}</div></div>`;
@@ -162,6 +173,38 @@ function renderEvents(events,sport,leagueName){
       btn.classList.add('sel');
     });
   });
+}
+
+function renderBaseballLeague(events,leagueName,sm){
+  let html=`<div class="league-label">${sm.icon} ${esc(leagueName||sm.label)} · ALL 2-WAY MARKETS</div>`;
+  html+=`<div class="tbl-header mlb-league"><div class="th">Event</div><div class="th">Markets</div></div>`;
+  events.forEach((ev,i)=>{html+=makeBaseballLeagueRow(ev,i);});
+  evPanel.innerHTML=html;
+  evPanel.querySelectorAll('.ev-row').forEach(row=>{
+    row.addEventListener('click',()=>openEventPage(+row.dataset.idx));
+  });
+}
+
+function makeBaseballLeagueRow(ev,idx){
+  const comp=ev.competitions?.[0];const cs=comp?.competitors||[];
+  const aw=cs.find(c=>c.homeAway==='away')||cs[0]||{};
+  const hm=cs.find(c=>c.homeAway==='home')||cs[1]||{};
+  const aN=aw.team?.displayName||'Away',hN=hm.team?.displayName||'Home';
+  const aAb=aw.team?.abbreviation||(aN.slice(0,3).toUpperCase());
+  const hAb=hm.team?.abbreviation||(hN.slice(0,3).toUpperCase());
+  const state=comp?.status?.type?.state||'pre';
+  const detail=comp?.status?.type?.shortDetail||comp?.status?.type?.description||'Scheduled';
+  const isLive=state==='in';
+  const aS=aw.score??null,hS=hm.score??null;
+  const timeHtml=isLive
+    ?`<div class="ev-time live"><span class="ldot"></span>LIVE — ${esc(detail)}</div>`
+    :`<div class="ev-time">${esc(fmtDate(ev.date))}</div>`;
+  const asc=aS!==null?`<span class="sc">${aS}</span>`:'';
+  const hsc=hS!==null?`<span class="sc">${hS}</span>`:'';
+  const info=`<div class="ev-cell">${timeHtml}<div class="ev-team away"><span class="t-abbr">${esc(aAb)}</span>${esc(aN)}${asc}</div><div class="ev-team home"><span class="t-abbr">${esc(hAb)}</span>${esc(hN)}${hsc}</div></div>`;
+  const mks=getBaseballMarkets(idx,aAb,hAb,true);
+  const mkHtml=mks.map(m=>`<div class="mlb-market-mini"><div class="mlb-market-name">${esc(m.name)}</div><div class="mlb-market-opts">${m.options.map(o=>`<button class="odd-btn"><span class="odd-line">${esc(o.label)}</span><span class="odd-price ${pc(o.price)}">${fo(o.price)}</span></button>`).join('')}</div></div>`).join('');
+  return`<div class="ev-row mlb-league" data-idx="${idx}">${info}<div class="mkt-cell mlb-market-cell">${mkHtml}</div></div>`;
 }
 
 function makeRow(ev,idx,sport,soc,gc){
@@ -203,8 +246,65 @@ function mkt(sport,soc,col,o,aAb,hAb){
 
 function selectEv(idx){
   selectedEvent=currentEvents[idx]||null;
+  currentEventIndex=idx;
   evPanel.querySelectorAll('.ev-row').forEach((r,i)=>r.classList.toggle('sel',i===idx));
   updateCtx();
+}
+
+function openEventPage(idx){
+  selectEv(idx);
+  const ev=currentEvents[idx];
+  if(!ev)return;
+  currentView='event';
+  renderEventPage(ev,idx,currentSport);
+}
+
+function renderEventPage(ev,idx,sport){
+  const comp=ev.competitions?.[0];const cs=comp?.competitors||[];
+  const aw=cs.find(c=>c.homeAway==='away')||cs[0]||{};
+  const hm=cs.find(c=>c.homeAway==='home')||cs[1]||{};
+  const aN=aw.team?.displayName||'Away',hN=hm.team?.displayName||'Home';
+  const aAb=aw.team?.abbreviation||(aN.slice(0,3).toUpperCase());
+  const hAb=hm.team?.abbreviation||(hN.slice(0,3).toUpperCase());
+  const status=comp?.status?.type?.shortDetail||comp?.status?.type?.description||'Scheduled';
+  const markets=getBaseballMarkets(idx,aAb,hAb,false);
+  const cards=markets.map(m=>`<article class="event-market-card"><h4>${esc(m.name)}</h4><div class="event-market-grid">${m.options.map(o=>`<button class="odd-btn"><span class="odd-line">${esc(o.label)}</span><span class="odd-price ${pc(o.price)}">${fo(o.price)}</span></button>`).join('')}</div></article>`).join('');
+  evPanel.innerHTML=`<div class="event-page">
+    <button class="h-btn event-back" id="event-back">← Back to ${esc((SPORTS.find(s=>s.key===sport)?.label)||sport.toUpperCase())}</button>
+    <div class="event-hero">
+      <div class="event-title">${esc(aN)} @ ${esc(hN)}</div>
+      <div class="event-sub">${esc(fmtDate(ev.date))} · ${esc(status)}</div>
+    </div>
+    <div class="event-markets-wrap">
+      <div class="league-label">All markets for this event</div>
+      <div class="event-market-list">${cards}</div>
+    </div>
+  </div>`;
+  document.getElementById('event-back')?.addEventListener('click',()=>renderEvents(currentEvents,sport,currentLeagueName));
+}
+
+function getBaseballMarkets(idx,aAb,hAb,leagueOnly=false){
+  const o=getDemoOdds('mlb',idx);
+  const fav=o.away_ml<0;
+  const awayRl=fav?`-${o.spread}`:`+${o.spread}`;
+  const homeRl=fav?`+${o.spread}`:`-${o.spread}`;
+  const base=[
+    {name:'Run Line',options:[{label:`${aAb} ${awayRl}`,price:o.aspj},{label:`${hAb} ${homeRl}`,price:o.hspj}]},
+    {name:'Total Runs',options:[{label:`Over ${o.total}`,price:-110},{label:`Under ${o.total}`,price:-110}]},
+    {name:'Moneyline',options:[{label:aAb,price:o.away_ml},{label:hAb,price:o.home_ml}]},
+    {name:'First 5 Innings ML',options:[{label:aAb,price:o.away_ml+25},{label:hAb,price:o.home_ml+20}]},
+    {name:'First 5 Innings Total',options:[{label:`Over ${(o.total/2).toFixed(1)}`,price:-112},{label:`Under ${(o.total/2).toFixed(1)}`,price:-108}]},
+    {name:`${aAb} Team Total`,options:[{label:`Over ${(o.total/2+0.5).toFixed(1)}`,price:-118},{label:`Under ${(o.total/2+0.5).toFixed(1)}`,price:-102}]},
+    {name:`${hAb} Team Total`,options:[{label:`Over ${(o.total/2-0.5).toFixed(1)}`,price:-104},{label:`Under ${(o.total/2-0.5).toFixed(1)}`,price:-116}]},
+  ];
+  if(leagueOnly)return base;
+  return[
+    ...base,
+    {name:'Alternative Run Line (+2.5)',options:[{label:`${aAb} +2.5`,price:-230},{label:`${hAb} -2.5`,price:+180}]},
+    {name:'Alternative Total Runs',options:[{label:`Over ${o.total+1}`,price:+108},{label:`Under ${o.total+1}`,price:-128}]},
+    {name:'Will game go extra innings?',options:[{label:'Yes',price:+700},{label:'No',price:-1200}]},
+    {name:'Both teams to score 3+ runs',options:[{label:'Yes',price:-120},{label:'No',price:+100}]},
+  ];
 }
 
 function updateCtx(){
@@ -261,9 +361,13 @@ async function sendChat(){
   const timer=setInterval(()=>{if(elapsedEl)elapsedEl.textContent=`${Math.round((Date.now()-t0)/1000)}s`;},500);
 
   // Trim events to only the fields formatContext needs — avoids 413 from large ESPN payloads
-  const events=currentEvents.map(ev=>{
+  const useSelectedEventOnly = currentView==='event' || /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bhere\b|\bvalue here\b/i.test(q);
+  const sourceEvents = useSelectedEventOnly && selectedEvent ? [selectedEvent] : currentEvents;
+  const events=sourceEvents.map(ev=>{
     const comp=ev.competitions?.[0];
     return{
+      id:ev.id,
+      uid:ev.uid,
       date:ev.date,
       competitions:[{
         competitors:(comp?.competitors||[]).map(c=>({
@@ -271,6 +375,8 @@ async function sendChat(){
           team:{displayName:c.team?.displayName}
         })),
         status:{type:{
+          state:comp?.status?.type?.state,
+          completed:comp?.status?.type?.completed,
           description:comp?.status?.type?.description,
           shortDetail:comp?.status?.type?.shortDetail
         }}
@@ -279,7 +385,15 @@ async function sendChat(){
   });
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
   try{
-    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userQuery:q,events,model})});
+    const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      userQuery:q,
+      events,
+      model,
+      activeSport:currentSport,
+      activeLeague:currentLeagueName,
+      selectedEventId:selectedEvent?.id||selectedEvent?.uid||null,
+      currentView,
+    })});
     if(!r.ok && !r.headers.get('content-type')?.includes('text/event-stream')){
       throw new Error(`Server error (HTTP ${r.status}). Please try again.`);
     }
@@ -308,13 +422,13 @@ async function sendChat(){
     if(data.error) throw new Error(`Server error: ${data.error}`);
 
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
-    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${(data.log?.model||model).replace('claude-','')}`;
+    const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${formatModelHint(data.log?.model||model)}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
     const hint=document.getElementById('model-hint');
-    if(hint)hint.textContent=data.log?.model?`✓ ${data.log.model.replace('claude-','').replace('-2025','')}`:'';
+    if(hint)hint.textContent=data.log?.model?`✓ ${formatModelHint(data.log.model)}`:'';
   }catch(e){
     // Re-check real server status so the badge stays accurate
     serverOnline=await checkServer();
@@ -328,15 +442,19 @@ async function sendChat(){
 
 function renderResult(r){
   if(!r)return'<span class="no-data">No result</span>';
-  let h=`<div class="bet-sum">${esc(r.summary)}</div>`;
+  let h=`<div class="bet-sum">${esc(r.summary||'No summary')}</div>`;
+  h+=`<div class="bt-meta">${r.confidence?`<span class="cbadge ${esc((r.confidence||'low').toLowerCase())}">${esc(r.confidence)}</span>`:''}${r.decision?`<span class="impl">decision: ${esc(r.decision)}</span>`:''}</div>`;
+  if(r.insight||r.next_action){
+    h+=`<div class="bet-cards">
+      ${r.insight?`<div class="bet-card"><div class="bt-mkt">Insight</div><div class="bt-reason">${esc(r.insight)}</div></div>`:''}
+      ${r.next_action?`<div class="bet-card"><div class="bt-mkt">Next Action</div><div class="bt-reason">${esc(r.next_action)}</div></div>`:''}
+    </div>`;
+  }
   if(r.bets?.length){
     h+='<div class="bet-cards">';
     r.bets.forEach(b=>{
-      const c=(b.confidence||'').toLowerCase();
-      const badge=c?`<span class="cbadge ${c}">${c}</span>`:'';
-      const ip=b.implied_probability?`<span class="impl">implied: ${esc(b.implied_probability)}</span>`:'';
-      const ev=Array.isArray(b.evidence)&&b.evidence.length?`<ul class="bt-ev">${b.evidence.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`:'';
-      h+=`<div class="bet-card"><div class="bt-mkt">${esc(b.market)}</div><div class="bt-sel">▶ ${esc(b.selection)}</div><div class="bt-meta">${badge}${ip}</div><div class="bt-reason">${esc(b.reason)}</div>${ev}</div>`;
+      const odds=b.odds?`<span class="impl">${esc(b.odds)}</span>`:'';
+      h+=`<div class="bet-card"><div class="bt-mkt">${esc(b.market)}</div><div class="bt-sel">▶ ${esc(b.selection)}</div><div class="bt-meta">${odds}</div><div class="bt-reason">${esc(b.reason)}</div></div>`;
     });
     h+='</div>';
   }
@@ -355,7 +473,8 @@ function updatePrompt(secs,ver){
   document.getElementById('prompt-ph').style.display='none';
   document.getElementById('prompt-secs').style.display='';
   document.getElementById('vtag').textContent=ver||'v2';
-  setCode('s-sys',secs.systemPrompt);setCode('s-ctx',secs.contextData);
+  setCode('s-sys',secs.systemPrompt);setCode('s-int',secs.intentDecision||secs.detectedIntent);
+  setCode('s-ctx',secs.contextData);
   setCode('s-usr',secs.userInput);setCode('s-out',secs.outputFormat);
 }
 function setCode(id,txt){
@@ -370,6 +489,13 @@ function updateMetrics(log){
   document.getElementById('m-cache').textContent=log.cache_read_tokens||'0';
   document.getElementById('m-lat').textContent=log.latency_ms||'—';
   document.getElementById('log-box').innerHTML=Object.entries(log).map(([k,v])=>`<span class="lk">${k}</span>: <span class="lv">${JSON.stringify(v)}</span>`).join('\n');
+}
+
+function formatModelHint(model){
+  const m=String(model||'');
+  if(m.startsWith('claude-')) return m.replace('claude-','');
+  if(m.startsWith('gpt-')) return m.replace(/^gpt-/,'GPT-').replace(/-mini$/,' Mini');
+  return m;
 }
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}

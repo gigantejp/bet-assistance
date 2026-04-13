@@ -586,11 +586,17 @@
 
   // ── Load ESPN events ──
   let currentLeagueLabel = '';
+  let latestSportRequestId = 0;
 
   async function loadEvents(sport) {
+    const requestId = ++latestSportRequestId;
     eventsList.innerHTML = '<div class="no-events loading-spinner">Loading...</div>';
     eventCount.textContent = '—';
     const sportMeta = SPORTS.find(s => s.key === sport) || { icon: '🏟️', label: sport.toUpperCase() };
+    currentEvents = [];
+    currentLeagueLabel = sportMeta.label;
+    selectedEvent = null;
+    chatInput.placeholder = 'Ask about the selected game…';
     try {
       let data;
       try {
@@ -600,6 +606,7 @@
         const res = await fetch(ESPN_DIRECT[sport], { cache: 'no-store' });
         data = await res.json();
       }
+      if (requestId !== latestSportRequestId || sport !== currentSport) return;
       // resolve league name from ESPN or fall back to nav label
       const espnLeague = data.leagues?.[0]?.name || data.leagues?.[0]?.abbreviation || '';
       currentLeagueLabel = espnLeague || sportMeta.label;
@@ -668,26 +675,29 @@
 
   function renderBetResult(result) {
     if (!result) return '<span class="no-data-msg">No result</span>';
-    let html = `<div class="bet-summary">${escHtml(result.summary)}</div>`;
+    let html = `<div class="bet-summary">${escHtml(result.summary || 'No summary')}</div>`;
+    html += `<div class="bet-meta-row">${result.confidence ? `<span class="confidence-badge ${(result.confidence || '').toLowerCase()}">${escHtml(result.confidence)}</span>` : ''}${result.decision ? `<span class="implied-prob">decision: ${escHtml(result.decision)}</span>` : ''}</div>`;
+    if (result.insight || result.next_action) {
+      html += '<div class="bet-cards">';
+      if (result.insight) {
+        html += `<div class="bet-card"><div class="bet-market">Insight</div><div class="bet-reason">${escHtml(result.insight)}</div></div>`;
+      }
+      if (result.next_action) {
+        html += `<div class="bet-card"><div class="bet-market">Next Action</div><div class="bet-reason">${escHtml(result.next_action)}</div></div>`;
+      }
+      html += '</div>';
+    }
     if (result.bets?.length) {
       html += '<div class="bet-cards">';
       result.bets.forEach(bet => {
-        const conf = (bet.confidence || '').toLowerCase();
-        const confBadge = conf
-          ? `<span class="confidence-badge ${conf}">${conf}</span>`
-          : '';
-        const impliedProb = bet.implied_probability
-          ? `<span class="implied-prob">implied: ${escHtml(bet.implied_probability)}</span>`
-          : '';
-        const evidenceItems = Array.isArray(bet.evidence) && bet.evidence.length
-          ? `<ul class="bet-evidence">${bet.evidence.map(e => `<li>${escHtml(e)}</li>`).join('')}</ul>`
+        const odds = bet.odds
+          ? `<span class="implied-prob">${escHtml(bet.odds)}</span>`
           : '';
         html += `<div class="bet-card">
           <div class="bet-market">${escHtml(bet.market)}</div>
           <div class="bet-selection">▶ ${escHtml(bet.selection)}</div>
-          <div class="bet-meta-row">${confBadge}${impliedProb}</div>
+          <div class="bet-meta-row">${odds}</div>
           <div class="bet-reason">${escHtml(bet.reason)}</div>
-          ${evidenceItems}
         </div>`;
       });
       html += '</div>';
@@ -711,15 +721,43 @@
 
     const loadingMsg = addMessage('assistant', '<span class="loading-spinner">Bet Assistance is thinking…</span>');
 
-    const eventsToSend = selectedEvent
-      ? [selectedEvent]
-      : currentEvents.slice(0, 3);
+    const useSelectedEventOnly =
+      !!selectedEvent &&
+      /\bthis game\b|\bthis match\b|\bthis event\b|\bthis one\b|\bfor this game\b|\bodds for this match\b|\bhere\b|\bvalue here\b/i.test(query);
+    const eventsToSend = (useSelectedEventOnly ? [selectedEvent] : currentEvents.slice(0, 5)).map(ev => {
+      const comp = ev.competitions?.[0];
+      return {
+        id: ev.id,
+        uid: ev.uid,
+        date: ev.date,
+        competitions: [{
+          competitors: (comp?.competitors || []).map(c => ({
+            homeAway: c.homeAway,
+            score: c.score,
+            team: { displayName: c.team?.displayName },
+          })),
+          status: { type: {
+            state: comp?.status?.type?.state,
+            completed: comp?.status?.type?.completed,
+            description: comp?.status?.type?.description,
+            shortDetail: comp?.status?.type?.shortDetail,
+          } },
+        }],
+      };
+    });
 
     try {
       const res = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userQuery: query, events: eventsToSend }),
+        body: JSON.stringify({
+          userQuery: query,
+          events: eventsToSend,
+          activeSport: currentSport,
+          activeLeague: currentLeagueLabel,
+          selectedEventId: selectedEvent?.id || selectedEvent?.uid || null,
+          currentView: selectedEvent ? 'event' : 'league',
+        }),
       });
 
       const data = await safeJson(res);
