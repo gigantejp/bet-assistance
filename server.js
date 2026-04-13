@@ -572,9 +572,10 @@ function buildPromptPayload(userQuery, formattedContext) {
   const detectedIntent = classifyIntent(userQuery);
   const outputFormat = `{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[]}`;
 
+  const userMessage = buildPrompt(userQuery, formattedContext);
   return {
     system: PROMPT_SYSTEM.text,
-    userMessage: buildPrompt(userQuery, formattedContext),
+    userMessage,
     sections: {
       systemPrompt: PROMPT_SYSTEM.text,
       detectedIntent,
@@ -582,6 +583,8 @@ function buildPromptPayload(userQuery, formattedContext) {
       contextData: formattedContext,
       userInput: userQuery,
       outputFormat,
+      fullPromptSystem: PROMPT_SYSTEM.text,
+      fullPromptUser: userMessage,
     },
     version: PROMPT_SYSTEM.version,
   };
