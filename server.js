@@ -154,7 +154,7 @@ app.get("/api/scoreboard/:sport", async (req, res) => {
   });
 });
 async function callClaude(prompt, history = []) {
-  return await client.messages.stream({
+  return await anthropicClient.messages.stream({
     model: "claude-opus-4-6",
     max_tokens: 1024,
     messages: [...history, { role: "user", content: prompt }],
@@ -201,17 +201,67 @@ app.post("/chat", async (req, res) => {
 //  Spec: AI Betting Assistant — Prompt Design & Generation v2
 // ════════════════════════════════════════════════════════════════
 
+// Static rules live in the system prompt so prompt caching applies on every call.
+// Dynamic data (context + query) stays in the user message.
 const PROMPT_SYSTEM = {
   version: "v3",
-  text: "You are an expert in sports betting analysis and your goal is to answer the user's question. Follow the prompt exactly and return only valid JSON.",
+  text: `You are a sports betting analyst. Analyze only the data provided — never invent odds, stats, or events.
+
+CONTEXT PRIORITY
+* Selected event active → use ONLY that event
+* No selected event → use all provided events
+* User explicitly mentions a different league → override scope to that league
+
+ANALYSIS RULES
+* Game status: live (score present) vs upcoming (scheduled only)
+* Odds math: fav = |odds|/(|odds|+100)  |  dog = 100/(odds+100)
+* Near -110/-110 = coin flip = no edge → decision = "pass"
+* State explicitly when available data is limited
+
+BETTING DISCIPLINE
+* BET    → clear favorite (-200+) OR strong live momentum
+* LEAN   → moderate edge (-120 to -190)
+* PASS   → near-even, no signal, data insufficient, or event completed
+* EXPLORE → user needs more information before deciding
+* Never guarantee outcomes or suggest stake sizes
+
+EVENT VALIDATION
+* Completed event → decision = "pass", explain betting is closed
+* Do NOT suggest bets for completed events
+
+OUTPUT: return ONLY valid JSON — no text outside the JSON block.`,
 };
 
-// Demo odds table (ESPN doesn't expose real odds)
-const DEMO_MARKETS = [
-  { away: "+120", draw: "+280", home: "-150" },
-  { away: "-110", draw: "+300", home: "+100" },
-  { away: "+200", draw: "+250", home: "-230" },
+// Demo odds bank — 8 entries, mirrors sportsbook.js OB table so AI sees what users see.
+// [away_ml, home_ml, spread, away_spread_juice, home_spread_juice, draw]
+const OB_BANK = [
+  [+130, -150, 1.5, -115, +100, +290],
+  [-105, -115, 3.5, -110, -110, +310],
+  [+175, -210, 1.5, +120, -140, +265],
+  [+110, -130, 4.5, -110, -110, +295],
+  [-120, +100, 1.5, -130, +110, +280],
+  [+155, -185, 6.5, +130, -150, +320],
+  [-115, -105, 2.5, -110, -110, +285],
+  [+200, -240, 1.5, +145, -165, +260],
 ];
+const SPORT_TOTALS = {
+  nba:    [224.5, 228, 218.5, 231, 235, 221, 226.5, 220],
+  nfl:    [44.5, 47.5, 42, 51.5, 49, 45, 48.5, 43],
+  mlb:    [8.5, 9, 9.5, 7.5, 10, 8, 8.5, 9],
+  nhl:    [5.5, 6, 6.5, 5, 5.5, 6, 5.5, 6],
+  ncaaf:  [47.5, 54, 44, 51.5, 57, 42, 49.5, 55],
+  ncaam:  [147.5, 144, 151, 139.5, 148, 152, 145, 149],
+  soccer: [2.5, 3, 2.5, 3.5, 2, 2.5, 3, 2.5],
+  default:[2.5, 3, 3.5, 2, 2.5, 3, 2.5, 3],
+};
+const SOCCER_SPORTS_SERVER = new Set(["epl","laliga","bundesliga","seriea","ligue1","ucl","uel","mls"]);
+
+// DEMO_MARKETS — 8-entry format used by formatContext (index maps to OB_BANK row)
+const DEMO_MARKETS = OB_BANK.map(o => ({
+  away: o[0] > 0 ? `+${o[0]}` : `${o[0]}`,
+  draw: o[5] > 0 ? `+${o[5]}` : `${o[5]}`,
+  home: o[1] > 0 ? `+${o[1]}` : `${o[1]}`,
+}));
 
 // Allowed models — validated to prevent arbitrary model injection
 const MODEL_CATALOG = {
@@ -505,123 +555,22 @@ function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}
   return lines.join("\n");
 }
 
+// buildPrompt — dynamic section only (context + query).
+// All static analysis rules live in PROMPT_SYSTEM.text for prompt caching.
 function buildPrompt(query = "", context = "") {
-  return `You are a sports betting analyst with deep expertise in odds, probabilities, and market behavior.
-
-Your goal is to provide clear and practical betting insights.
-
-You MUST always return a meaningful answer.
-
-CRITICAL FIX - REMOVE STRICT FAILURE MODES
-
-* DO NOT return "UNKNOWN"
-* DO NOT return "Could not process request"
-* DO NOT fail due to classification uncertainty
-
-If the query is simple or partially ambiguous:
--> Interpret it in the most reasonable way
-
-CONTEXT BINDING
-
-The user may be viewing a specific event.
-You are ALWAYS provided with event context.
-
-If the user refers to:
-* "this game"
-* "this match"
-* "this event"
-* "here"
-
-You MUST interpret it as the current event in the context.
-
-CONTEXT PRIORITY
-
-* If the query refers to the current event -> ONLY use that event
-* DO NOT introduce other events
-* DO NOT expand scope unless explicitly requested
-
-ANALYSIS RULES
-
-* Use only the provided data
-* Do not invent odds or statistics
-* Evaluate implied probability
-* Identify whether a real betting edge exists
-
-If no edge exists:
--> decision = "pass"
-
-Do NOT force a bet.
-
-BETTING DISCIPLINE
-
-* Never guarantee outcomes
-* Never suggest stake sizes
-* Avoid speculative reasoning
-* Prefer PASS over weak or unclear bets
-
-INTERPRETATION RULES
-
-For queries like:
-* "what's the best bet for this game"
-* "is the favorite safe"
-* "any value here"
-
-You MUST:
--> treat them as event analysis requests
--> analyze the current event
-
-DO NOT require explicit structured input.
-
-EVENT VALIDATION RULES
-
-* If an event is completed -> it is NOT actionable
-* DO NOT suggest bets for completed events
-* DO NOT analyze completed events as opportunities
-* If the event is finished -> decision = "pass"
-* Explain clearly that betting is no longer available
-* DO NOT reference other events as fallback
-
-RESPONSE BEHAVIOR
-
-* Interpret naturally
-* Always provide a useful answer
-* Stay concise and actionable
-* Avoid repeating unnecessary data
-
-Return ONLY valid JSON:
-{
-  "decision": "bet | lean | pass",
-  "confidence": "low | medium | high",
-  "summary": "short explanation",
-  "insight": "key takeaway",
-  "next_action": "recommended next step",
-  "bets": [
-    {
-      "market": "...",
-      "selection": "...",
-      "odds": "...",
-      "reason": "..."
-    }
-  ]
-}
-
-CONTEXT
+  return `CONTEXT
 ${context}
 
 USER QUERY
-${query}`;
+${query}
+
+Return ONLY valid JSON:
+{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[{"market":"...","selection":"...","odds":"...","reason":"..."}]}`;
 }
 
 function buildPromptPayload(userQuery, formattedContext) {
   const detectedIntent = classifyIntent(userQuery);
-  const outputFormat = `{
-  "decision": "bet | lean | pass",
-  "confidence": "low | medium | high",
-  "summary": "...",
-  "insight": "...",
-  "next_action": "...",
-  "bets": []
-}`;
+  const outputFormat = `{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[]}`;
 
   return {
     system: PROMPT_SYSTEM.text,
@@ -639,7 +588,7 @@ function buildPromptPayload(userQuery, formattedContext) {
 }
 
 const VALID_CONFIDENCE = new Set(["high", "medium", "low"]);
-const VALID_DECISIONS = new Set(["bet", "lean", "pass"]);
+const VALID_DECISIONS  = new Set(["bet", "lean", "pass", "explore"]);
 
 function normalizeBet(bet = {}) {
   return {
@@ -693,7 +642,7 @@ async function generateAIResponse(query, context, model) {
     model,
     system: promptPayload.system,
     userMessage: promptPayload.userMessage,
-    temperature: 0.7,
+    temperature: 0.5,
     maxTokens: 300,
   });
 }
