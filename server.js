@@ -53,19 +53,6 @@ const ESPN_ENDPOINTS = {
   nll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard",
 };
 
-// SportsBetting.ag links — for directing users to bet
-const SB_URLS = {
-  nba:    "https://www.sportsbetting.ag/sportsbook/basketball/nba",
-  mlb:    "https://www.sportsbetting.ag/sportsbook/baseball/mlb",
-  nhl:    "https://www.sportsbetting.ag/sportsbook/hockey/nhl",
-  ufc:    "https://www.sportsbetting.ag/sportsbook/mma",
-  soccer: "https://www.sportsbetting.ag/sportsbook/soccer",
-  tennis: "https://www.sportsbetting.ag/sportsbook/tennis",
-  nfl:    "https://www.sportsbetting.ag/sportsbook/football/nfl",
-  golf:   "https://www.sportsbetting.ag/sportsbook/golf",
-  boost:  "https://www.sportsbetting.ag/sportsbook/promotions",
-  default:"https://www.sportsbetting.ag/sportsbook",
-};
 
 async function espnFetch(key) {
   const url = ESPN_ENDPOINTS[key];
