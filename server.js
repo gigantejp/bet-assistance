@@ -736,7 +736,7 @@ async function generateAIResponse(query, context, model, intent) {
     system: promptPayload.system,
     userMessage: promptPayload.userMessage,
     temperature: 0.5,
-    maxTokens: 300,
+    maxTokens: 600,
   });
 }
 
@@ -908,7 +908,10 @@ app.post("/api/assistant/chat", async (req, res) => {
       return finish({
         result: validation.valid ? validation.data : safeFallbackResponse(),
         raw: rawText, log,
-        debug: { gate: gate.debug, analysis: analysisDebug },
+        debug: {
+          gate: gate.debug,
+          analysis: { ...analysisDebug, rawResponse: rawText, parseError: validation.valid ? null : validation.error },
+        },
       });
     } catch (err) {
       lastError = err.message;
