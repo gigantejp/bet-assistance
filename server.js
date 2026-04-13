@@ -401,6 +401,8 @@ function classifyIntent(query = "") {
 
   // Analytical intents — reach the LLM with intent-specific prompt
   if (/best odds|value\b|best price|best line/.test(q)) return "FIND_BEST_ODDS";
+  // "odds for [league/games]" — user wants odds comparison even if they say "games"
+  if (/\bodds\b/.test(q) && /\bgames\b|\bmatches\b|mlb|nba|nfl|nhl|soccer|today|tonight/.test(q)) return "FIND_BEST_ODDS";
   if (/best match|which game|best game/.test(q)) return "FIND_BEST_MATCH";
   if (/explain|what does|meaning of|how do odds work|-110|moneyline|spread|what is a total|parlay|teaser/.test(q)) {
     return "EXPLAIN";
