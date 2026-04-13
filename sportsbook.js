@@ -384,11 +384,13 @@ async function sendChat(){
     };
   });
   const model=document.getElementById('model-select')?.value||'claude-opus-4-6';
+  const intentModel=document.getElementById('gate-model-select')?.value||'claude-haiku-4-5-20251001';
   try{
     const r=await fetch('/api/assistant/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       userQuery:q,
       events,
       model,
+      intentModel,
       activeSport:currentSport,
       activeLeague:currentLeagueName,
       selectedEventId:selectedEvent?.id||selectedEvent?.uid||null,
@@ -424,7 +426,9 @@ async function sendChat(){
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
     const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${formatModelHint(data.log?.model||model)}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
-    if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
+    if(data.debug?.analysis?.sections)updatePrompt(data.debug.analysis.sections,data.debug.analysis.version);
+    else if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
+    if(data.debug?.gate)updateGate(data.debug.gate);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
     const hint=document.getElementById('model-hint');
@@ -462,7 +466,7 @@ function renderResult(r){
 }
 
 // DEBUG PANEL
-const DBG_TABS=['prompt','full','metrics'];
+const DBG_TABS=['prompt','full','gate','metrics'];
 document.querySelectorAll('.dbg-tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.dbg-tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
   const tab=t.dataset.tab;
@@ -484,6 +488,31 @@ function updatePrompt(secs,ver){
   document.getElementById('full-secs').style.display='';
   setCode('s-full-sys',fullSysTxt);
   setCode('s-full-usr',fullUsrTxt);
+}
+function updateGate(g){
+  if(!g)return;
+  document.getElementById('gate-ph').style.display='none';
+  document.getElementById('gate-secs').style.display='';
+  const tag=document.getElementById('gate-model-tag');
+  if(tag)tag.textContent=formatModelHint(g.model);
+  const r=g.rawResponse||'';
+  let parsed=null;
+  try{const m=r.match(/\{[\s\S]*\}/);parsed=JSON.parse(m?m[0]:r);}catch{}
+  const intent=parsed?.intent||'—';
+  const allowed=parsed?.allowed!==false;
+  const blockReason=parsed?.block_reason||'';
+  const ctxNeeded=parsed?.context_needed||'—';
+  const resType=parsed?.response_type||'—';
+  const lat=g.latency_ms||'—';
+  const gdr=document.getElementById('gate-decision-row');
+  if(gdr)gdr.innerHTML=[
+    ['Intent',intent],['Allowed',allowed?(g.fallback?'fallback ✓':'✓'):'✗ blocked'],['Latency',lat+'ms'],
+    ['Context',ctxNeeded],['Response',resType],
+  ].map(([l,v])=>`<div class="gd-item"><div class="gd-lbl">${l}</div><div class="gd-val ${l==='Allowed'?(allowed?'ok':'blocked'):''}">${esc(String(v))}</div></div>`
+  ).join('')+(blockReason?`<div class="gd-item" style="width:100%"><div class="gd-lbl">Block Reason</div><div class="gd-val blocked">${esc(blockReason)}</div></div>`:'');
+  setCode('s-gate-sys',g.systemPrompt);
+  setCode('s-gate-usr',g.userMessage);
+  setCode('s-gate-out',r);
 }
 function setCode(id,txt){
   const el=document.getElementById(id);if(!el)return;
