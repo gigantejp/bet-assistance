@@ -670,8 +670,41 @@ app.post("/api/assistant/chat", async (req, res) => {
   const provider = getModelProvider(model);
   const intent = classifyIntent(userQuery);
   const startTime = Date.now();
-  const formattedContext = formatContext(events, intent, {
-    activeSport,
+
+  // LEAGUE_CONTEXT: if user explicitly mentions a different sport, fetch it server-side.
+  // This allows "list NBA games" while viewing MLB to return actual NBA data.
+  const explicitSport = detectExplicitSportMention(userQuery);
+  let resolvedEvents = events;
+  let resolvedSport  = activeSport;
+
+  if (explicitSport && explicitSport !== activeSport) {
+    const espnData = await espnFetch(explicitSport);
+    if (espnData?.events?.length) {
+      // Trim to same shape the client sends
+      resolvedEvents = espnData.events.slice(0, 10).map(ev => {
+        const comp = ev.competitions?.[0];
+        return {
+          id: ev.id, uid: ev.uid, date: ev.date,
+          competitions: [{
+            competitors: (comp?.competitors || []).map(c => ({
+              homeAway: c.homeAway, score: c.score,
+              team: { displayName: c.team?.displayName },
+            })),
+            status: { type: {
+              state:       comp?.status?.type?.state,
+              completed:   comp?.status?.type?.completed,
+              description: comp?.status?.type?.description,
+              shortDetail: comp?.status?.type?.shortDetail,
+            }},
+          }],
+        };
+      });
+      resolvedSport = explicitSport;
+    }
+  }
+
+  const formattedContext = formatContext(resolvedEvents, intent, {
+    activeSport:     resolvedSport,
     activeLeague,
     selectedEventId,
     currentView,
@@ -720,6 +753,9 @@ app.post("/api/assistant/chat", async (req, res) => {
         success: validation.valid,
         prompt_version: version,
         intent,
+        sport_requested: explicitSport || activeSport,
+        sport_resolved:  resolvedSport,
+        context_fetched: explicitSport !== null && explicitSport !== activeSport,
         attempt,
       };
 
