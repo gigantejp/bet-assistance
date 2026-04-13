@@ -426,8 +426,10 @@ async function sendChat(){
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
     const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${formatModelHint(data.log?.model||model)}`;
     loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
-    if(data.debug?.analysis?.sections)updatePrompt(data.debug.analysis.sections,data.debug.analysis.version);
-    else if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
+    if(data.debug?.analysis?.sections){
+      const secs={...data.debug.analysis.sections,rawResponse:data.debug.analysis.rawResponse,parseError:data.debug.analysis.parseError};
+      updatePrompt(secs,data.debug.analysis.version);
+    }else if(data.debug?.sections)updatePrompt(data.debug.sections,data.debug.version);
     if(data.debug?.gate)updateGate(data.debug.gate);
     if(data.log)updateMetrics(data.log);
     // Show which model actually responded
@@ -488,6 +490,12 @@ function updatePrompt(secs,ver){
   document.getElementById('full-secs').style.display='';
   setCode('s-full-sys',fullSysTxt);
   setCode('s-full-usr',fullUsrTxt);
+  setCode('s-full-out',secs.rawResponse||'');
+  const errTag=document.getElementById('parse-err-tag');
+  if(errTag){
+    if(secs.parseError){errTag.textContent='parse error: '+secs.parseError;errTag.style.display='';}
+    else{errTag.style.display='none';}
+  }
 }
 function updateGate(g){
   if(!g)return;
