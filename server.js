@@ -393,9 +393,16 @@ async function createModelResponse({ model, system, userMessage, temperature, ma
 function classifyIntent(query = "") {
   const q = query.toLowerCase().trim();
   if (!q) return "ANALYZE_EVENT";
+
+  // Static short-circuit intents — never reach the LLM
+  if (/my account|my balance|deposit|withdraw|transaction history|profile settings/.test(q)) return "ACCOUNT";
+  if (/responsible.?gambl|self.?exclud|set.?limit|problem.?gambl|addiction|1-800-gambler|ncpg/.test(q)) return "RG_INFO";
+  if (/\bbet.?slip\b|my bets|open bets|pending bets|my wagers/.test(q)) return "BETSLIP";
+
+  // Analytical intents — reach the LLM with intent-specific prompt
   if (/best odds|value\b|best price|best line/.test(q)) return "FIND_BEST_ODDS";
   if (/best match|which game|best game/.test(q)) return "FIND_BEST_MATCH";
-  if (/explain|what does .* mean|meaning of|how do odds work|-110|moneyline|spread|total/.test(q)) {
+  if (/explain|what does|meaning of|how do odds work|-110|moneyline|spread|what is a total|parlay|teaser/.test(q)) {
     return "EXPLAIN";
   }
   if (/games|matches|fixtures|events|tonight|today|tomorrow|schedule|what's on|what is on/.test(q)) {
@@ -555,24 +562,45 @@ function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}
   return lines.join("\n");
 }
 
-// buildPrompt — dynamic section only (context + query).
+// Intent-specific output schemas and instructions for the LLM.
+const INTENT_SCHEMAS = {
+  ANALYZE_EVENT: {
+    instruction: "",
+    schema: `{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[{"market":"...","selection":"...","odds":"...","reason":"..."}]}`,
+  },
+  FIND_BEST_ODDS: {
+    instruction: "Compare ALL provided events. Identify the single best-value bet available across all games today.",
+    schema: `{"decision":"bet|lean|pass","confidence":"low|medium|high","summary":"...best value bet available...","insight":"...why this line has value vs the others...","next_action":"...","bets":[{"market":"...","selection":"...","odds":"...","reason":"..."}]}`,
+  },
+  FIND_BEST_MATCH: {
+    instruction: "Compare ALL provided events. Identify which game has the clearest betting edge and explain why.",
+    schema: `{"decision":"lean|bet|pass","confidence":"low|medium|high","summary":"...best game to bet today...","insight":"...matchup comparison and why this game stands out...","next_action":"...","bets":[{"market":"...","selection":"...","odds":"...","reason":"..."}]}`,
+  },
+  EXPLAIN: {
+    instruction: "Answer the user's question in plain language. Use 'insight' for the full explanation. Do NOT recommend specific bets.",
+    schema: `{"decision":"explore","confidence":"high","summary":"...one-line answer...","insight":"...full plain-language explanation...","next_action":"...follow-up suggestion...","bets":[]}`,
+  },
+};
+
+// buildPrompt — dynamic section only (context + query + intent framing).
 // All static analysis rules live in PROMPT_SYSTEM.text for prompt caching.
-function buildPrompt(query = "", context = "") {
+function buildPrompt(query = "", context = "", intent = "ANALYZE_EVENT") {
+  const { instruction, schema } = INTENT_SCHEMAS[intent] || INTENT_SCHEMAS.ANALYZE_EVENT;
   return `CONTEXT
 ${context}
 
 USER QUERY
-${query}
+${query}${instruction ? `\n\nINSTRUCTION\n${instruction}` : ""}
 
 Return ONLY valid JSON:
-{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[{"market":"...","selection":"...","odds":"...","reason":"..."}]}`;
+${schema}`;
 }
 
-function buildPromptPayload(userQuery, formattedContext) {
-  const detectedIntent = classifyIntent(userQuery);
-  const outputFormat = `{"decision":"bet|lean|pass|explore","confidence":"low|medium|high","summary":"...","insight":"...","next_action":"...","bets":[]}`;
+function buildPromptPayload(userQuery, formattedContext, intent) {
+  const detectedIntent = intent || classifyIntent(userQuery);
+  const { schema: outputFormat } = INTENT_SCHEMAS[detectedIntent] || INTENT_SCHEMAS.ANALYZE_EVENT;
 
-  const userMessage = buildPrompt(userQuery, formattedContext);
+  const userMessage = buildPrompt(userQuery, formattedContext, detectedIntent);
   return {
     system: PROMPT_SYSTEM.text,
     userMessage,
@@ -639,8 +667,8 @@ function parseResponse(text = "") {
   }
 }
 
-async function generateAIResponse(query, context, model) {
-  const promptPayload = buildPromptPayload(query, context);
+async function generateAIResponse(query, context, model, intent) {
+  const promptPayload = buildPromptPayload(query, context, intent);
   return createModelResponse({
     model,
     system: promptPayload.system,
@@ -713,7 +741,7 @@ app.post("/api/assistant/chat", async (req, res) => {
     currentView,
     userQuery,
   });
-  const { sections, version } = buildPromptPayload(userQuery, formattedContext);
+  const { sections, version } = buildPromptPayload(userQuery, formattedContext, intent);
 
   // SSE setup — keeps Render's 30s proxy alive indefinitely
   res.setHeader("Content-Type", "text/event-stream");
@@ -731,6 +759,40 @@ app.post("/api/assistant/chat", async (req, res) => {
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
     res.end();
   };
+
+  // Static short-circuits — no LLM, instant response
+  const STATIC_RESPONSES = {
+    ACCOUNT: {
+      decision: "explore", confidence: "high",
+      summary: "Account management",
+      insight: "Deposits, withdrawals, bet history, and profile settings are all available in the My Account section (top right corner of the site).",
+      next_action: "Click 'My Account' to manage your account",
+      bets: [],
+    },
+    BETSLIP: {
+      decision: "explore", confidence: "high",
+      summary: "Your bet slip",
+      insight: "Open bets and pending wagers appear in the Bet Slip panel. You can review selections, adjust stakes, and confirm bets there.",
+      next_action: "Open the Bet Slip panel to view your current selections",
+      bets: [],
+    },
+    RG_INFO: {
+      decision: "explore", confidence: "high",
+      summary: "Responsible gambling resources",
+      insight: "You can set deposit limits, cooling-off periods, or self-exclusion in Responsible Gambling settings. For immediate support: call 1-800-522-4700 (NCPG) or visit ncpgambling.org.",
+      next_action: "Visit Responsible Gambling in account settings",
+      bets: [],
+    },
+  };
+
+  if (STATIC_RESPONSES[intent]) {
+    return finish({
+      result: STATIC_RESPONSES[intent],
+      raw: "",
+      log: { intent, latency_ms: Date.now() - startTime, short_circuit: true },
+      debug: { sections, version },
+    });
+  }
 
   // Short-circuit for FIND_EVENTS — no LLM needed, build list from resolved events
   if (intent === "FIND_EVENTS") {
@@ -771,7 +833,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   // Fallback: retry once on invalid output
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const response = await generateAIResponse(userQuery, formattedContext, model);
+      const response = await generateAIResponse(userQuery, formattedContext, model, intent);
 
       const latency = Date.now() - startTime;
       const rawText = response.rawText || "";
