@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const fetch = require("node-fetch");
 const Anthropic = require("@anthropic-ai/sdk");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -934,6 +936,57 @@ app.post("/api/assistant/chat", async (req, res) => {
     },
     debug: { sections, version },
   });
+});
+
+// ── FEEDBACK ─────────────────────────────────────────────────────────────────
+// Each entry is one JSON line in feedback.jsonl — portable, no DB needed.
+const FEEDBACK_FILE = path.join(__dirname, "feedback.jsonl");
+
+app.post("/api/feedback", (req, res) => {
+  const { rating, query, intent, decision, summary, model, intent_model, prompt_version, latency_ms } = req.body;
+  if (!["up", "down"].includes(rating)) return res.status(400).json({ error: "rating must be up or down" });
+  const entry = {
+    ts: Date.now(),
+    date: new Date().toISOString(),
+    rating,
+    query,
+    intent,
+    decision,
+    summary,
+    model,
+    intent_model,
+    prompt_version,
+    latency_ms,
+  };
+  try {
+    fs.appendFileSync(FEEDBACK_FILE, JSON.stringify(entry) + "\n");
+    console.log("[FEEDBACK]", JSON.stringify(entry));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Read all feedback — useful for analysis and building evals
+app.get("/api/feedback", (req, res) => {
+  try {
+    if (!fs.existsSync(FEEDBACK_FILE)) return res.json({ entries: [], total: 0 });
+    const lines = fs.readFileSync(FEEDBACK_FILE, "utf8").trim().split("\n").filter(Boolean);
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const summary = {
+      total: entries.length,
+      up: entries.filter(e => e.rating === "up").length,
+      down: entries.filter(e => e.rating === "down").length,
+      by_intent: {},
+    };
+    for (const e of entries) {
+      if (!summary.by_intent[e.intent]) summary.by_intent[e.intent] = { up: 0, down: 0 };
+      summary.by_intent[e.intent][e.rating]++;
+    }
+    res.json({ summary, entries });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

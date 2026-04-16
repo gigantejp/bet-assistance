@@ -425,7 +425,30 @@ async function sendChat(){
 
     loadEl.querySelector('.msg-bubble').innerHTML=renderResult(data.result);
     const m=document.createElement('div');m.className='msg-meta';m.textContent=`AI · ${data.log?.latency_ms||'—'}ms · ${formatModelHint(data.log?.model||model)}`;
-    loadEl.appendChild(m);cmMsgs.scrollTop=cmMsgs.scrollHeight;
+    loadEl.appendChild(m);
+    // Feedback buttons — each response gets a 👍/👎 row
+    if(!data.log?.short_circuit&&!data.log?.blocked){
+      const fbEl=document.createElement('div');fbEl.className='fb-row';
+      fbEl.innerHTML=`<span class="fb-lbl">¿Fue útil esta respuesta?</span><button class="fb-btn" data-r="up">👍</button><button class="fb-btn" data-r="down">👎</button>`;
+      fbEl.querySelectorAll('.fb-btn').forEach(btn=>btn.addEventListener('click',async()=>{
+        fbEl.querySelectorAll('.fb-btn').forEach(b=>b.classList.remove('selected-up','selected-down'));
+        btn.classList.add(btn.dataset.r==='up'?'selected-up':'selected-down');
+        fbEl.querySelector('.fb-lbl').innerHTML='<span class="fb-sent">Gracias ✓</span>';
+        await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          rating:btn.dataset.r,
+          query:q,
+          intent:data.log?.intent,
+          decision:data.result?.decision,
+          summary:data.result?.summary,
+          model:data.log?.model,
+          intent_model:data.log?.intent_model,
+          prompt_version:data.log?.prompt_version,
+          latency_ms:data.log?.latency_ms,
+        })});
+      }));
+      loadEl.appendChild(fbEl);
+    }
+    cmMsgs.scrollTop=cmMsgs.scrollHeight;
     if(data.debug?.analysis?.sections){
       const secs={...data.debug.analysis.sections,rawResponse:data.debug.analysis.rawResponse,parseError:data.debug.analysis.parseError};
       updatePrompt(secs,data.debug.analysis.version);
