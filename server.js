@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const fetch = require("node-fetch");
 const Anthropic = require("@anthropic-ai/sdk");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -281,7 +283,7 @@ async function runIntentGate(userQuery, model) {
     }
     return {
       result,
-      debug: { model, systemPrompt: GATE_SYSTEM, userMessage, rawResponse: raw, latency_ms: Date.now() - t0, tokens: resp.usage },
+      debug: { model, systemPrompt: GATE_SYSTEM, userMessage, rawResponse: raw, latency_ms: Date.now() - t0, tokens: resp.usage, cost_usd: calculateCost(model, resp.usage) },
     };
   } catch (err) {
     // Gate failure → fallback to regex, allow through
@@ -364,6 +366,45 @@ const DEFAULT_MODEL = "claude-opus-4-6";
 
 function getModelProvider(model) {
   return MODEL_CATALOG[model]?.provider || MODEL_CATALOG[DEFAULT_MODEL].provider;
+}
+
+// Pricing in USD per million tokens (input / output / cache_read / cache_write)
+const MODEL_PRICING = {
+  "claude-opus-4-6":            { in: 15.00, out: 75.00, cr: 1.50,  cw: 18.75 },
+  "claude-opus-4-1-20250805":   { in: 15.00, out: 75.00, cr: 1.50,  cw: 18.75 },
+  "claude-opus-4-1":            { in: 15.00, out: 75.00, cr: 1.50,  cw: 18.75 },
+  "claude-opus-4-20250514":     { in: 15.00, out: 75.00, cr: 1.50,  cw: 18.75 },
+  "claude-opus-4-0":            { in: 15.00, out: 75.00, cr: 1.50,  cw: 18.75 },
+  "claude-sonnet-4-6":          { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-sonnet-4-20250514":   { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-sonnet-4-0":          { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-3-7-sonnet-20250219": { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-3-7-sonnet-latest":   { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-3-5-sonnet-20241022": { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-3-5-sonnet-latest":   { in:  3.00, out: 15.00, cr: 0.30,  cw:  3.75 },
+  "claude-haiku-4-5-20251001":  { in:  0.80, out:  4.00, cr: 0.08,  cw:  1.00 },
+  "claude-3-5-haiku-20241022":  { in:  0.80, out:  4.00, cr: 0.08,  cw:  1.00 },
+  "claude-3-5-haiku-latest":    { in:  0.80, out:  4.00, cr: 0.08,  cw:  1.00 },
+  "claude-3-haiku-20240307":    { in:  0.25, out:  1.25, cr: 0.03,  cw:  0.30 },
+  "gpt-4o":                     { in:  2.50, out: 10.00, cr: 1.25,  cw:  0    },
+  "gpt-4o-mini":                { in:  0.15, out:  0.60, cr: 0.075, cw:  0    },
+  "gpt-4.1":                    { in:  2.00, out:  8.00, cr: 0,     cw:  0    },
+  "gpt-4.1-mini":               { in:  0.40, out:  1.60, cr: 0,     cw:  0    },
+  "gpt-4.1-nano":               { in:  0.10, out:  0.40, cr: 0,     cw:  0    },
+  "gpt-4":                      { in: 30.00, out: 60.00, cr: 0,     cw:  0    },
+  "o4-mini":                    { in:  1.10, out:  4.40, cr: 0.55,  cw:  0    },
+};
+
+function calculateCost(model, usage = {}) {
+  const p = MODEL_PRICING[model];
+  if (!p) return 0;
+  const M = 1_000_000;
+  return (
+    (usage.input_tokens                  || 0) * p.in  / M +
+    (usage.output_tokens                 || 0) * p.out / M +
+    (usage.cache_read_input_tokens       || 0) * p.cr  / M +
+    (usage.cache_creation_input_tokens   || 0) * p.cw  / M
+  );
 }
 
 async function createModelResponse({ model, system, userMessage, temperature, maxTokens }) {
@@ -791,7 +832,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         next_action: "Ask about upcoming games, odds, or betting concepts.",
         bets: [],
       },
-      raw: "", log: { intent, latency_ms: Date.now() - startTime, blocked: true },
+      raw: "", log: { intent, latency_ms: Date.now() - startTime, blocked: true, gate_cost_usd: gate.debug.cost_usd || 0, total_cost_usd: gate.debug.cost_usd || 0 },
       debug: { gate: gate.debug, analysis: null },
     });
   }
@@ -846,7 +887,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   if (STATIC_RESPONSES[intent]) {
     return finish({
       result: STATIC_RESPONSES[intent], raw: "",
-      log: { intent, latency_ms: Date.now() - startTime, short_circuit: true },
+      log: { intent, latency_ms: Date.now() - startTime, short_circuit: true, gate_cost_usd: gate.debug.cost_usd || 0, total_cost_usd: gate.debug.cost_usd || 0 },
       debug: { gate: gate.debug, analysis: analysisDebug },
     });
   }
@@ -868,7 +909,7 @@ app.post("/api/assistant/chat", async (req, res) => {
         next_action: "Select a game to analyze odds or ask about a specific matchup",
         bets: [] },
       raw: "",
-      log: { intent, sport_resolved: resolvedSport, latency_ms: Date.now() - startTime, short_circuit: true },
+      log: { intent, sport_resolved: resolvedSport, latency_ms: Date.now() - startTime, short_circuit: true, gate_cost_usd: gate.debug.cost_usd || 0, total_cost_usd: gate.debug.cost_usd || 0 },
       debug: { gate: gate.debug, analysis: analysisDebug },
     });
   }
@@ -898,6 +939,9 @@ app.post("/api/assistant/chat", async (req, res) => {
         sport_resolved: resolvedSport,
         context_fetched: explicitSport !== null && explicitSport !== activeSport,
         gate_latency_ms: gate.debug.latency_ms,
+        gate_cost_usd:   gate.debug.cost_usd || 0,
+        cost_usd:        calculateCost(response.model || model, response.usage),
+        total_cost_usd:  calculateCost(response.model || model, response.usage) + (gate.debug.cost_usd || 0),
         attempt,
       };
 
@@ -934,6 +978,57 @@ app.post("/api/assistant/chat", async (req, res) => {
     },
     debug: { sections, version },
   });
+});
+
+// ── FEEDBACK ─────────────────────────────────────────────────────────────────
+// Each entry is one JSON line in feedback.jsonl — portable, no DB needed.
+const FEEDBACK_FILE = path.join(__dirname, "feedback.jsonl");
+
+app.post("/api/feedback", (req, res) => {
+  const { rating, query, intent, decision, summary, model, intent_model, prompt_version, latency_ms } = req.body;
+  if (!["up", "down"].includes(rating)) return res.status(400).json({ error: "rating must be up or down" });
+  const entry = {
+    ts: Date.now(),
+    date: new Date().toISOString(),
+    rating,
+    query,
+    intent,
+    decision,
+    summary,
+    model,
+    intent_model,
+    prompt_version,
+    latency_ms,
+  };
+  try {
+    fs.appendFileSync(FEEDBACK_FILE, JSON.stringify(entry) + "\n");
+    console.log("[FEEDBACK]", JSON.stringify(entry));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Read all feedback — useful for analysis and building evals
+app.get("/api/feedback", (req, res) => {
+  try {
+    if (!fs.existsSync(FEEDBACK_FILE)) return res.json({ entries: [], total: 0 });
+    const lines = fs.readFileSync(FEEDBACK_FILE, "utf8").trim().split("\n").filter(Boolean);
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const summary = {
+      total: entries.length,
+      up: entries.filter(e => e.rating === "up").length,
+      down: entries.filter(e => e.rating === "down").length,
+      by_intent: {},
+    };
+    for (const e of entries) {
+      if (!summary.by_intent[e.intent]) summary.by_intent[e.intent] = { up: 0, down: 0 };
+      summary.by_intent[e.intent][e.rating]++;
+    }
+    res.json({ summary, entries });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

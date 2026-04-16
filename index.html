@@ -100,6 +100,19 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .gd-val{font-weight:700;color:var(--accent)}
 .gd-val.ok{color:var(--green)}.gd-val.blocked{color:var(--warn)}
 .parse-err-tag{font-size:.6rem;background:#2a0a0a;color:var(--warn);border:1px solid #5a1a1a;padding:1px 5px;border-radius:3px;margin-left:4px}
+.cost-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:7px;margin-bottom:9px}
+.cost-card{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:8px 10px;text-align:center}
+.cost-card.total{border-color:#2a3a50}
+.cost-val{font-size:1.15rem;font-weight:800;color:var(--accent);font-family:'JetBrains Mono','Fira Code',monospace}
+.cost-card.total .cost-val{color:#7fd4ff;font-size:1.3rem}
+.cost-lbl{font-size:.6rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+.fb-row{display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.fb-lbl{font-size:.7rem;color:var(--muted);flex:1}
+.fb-btn{background:none;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.9rem;transition:background .15s,border-color .15s;color:inherit}
+.fb-btn:hover{background:var(--card);border-color:var(--accent)}
+.fb-btn.selected-up{background:#0a2010;border-color:var(--green)}
+.fb-btn.selected-down{background:#2a0a0a;border-color:var(--warn)}
+.fb-sent{font-size:.72rem;color:var(--green)}
 .code-block.empty{color:var(--muted);font-style:italic;font-family:inherit}
 .ph-msg{color:var(--muted);font-size:.78rem;text-align:center;padding:20px 12px;line-height:1.6}
 .ph-msg strong{color:var(--accent);display:block;margin-bottom:6px;font-size:.82rem}
@@ -298,6 +311,11 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
       <div id="tab-metrics" style="display:none">
         <div class="ph-msg" id="metrics-ph"><strong>Token &amp; Latency Metrics</strong>Send a chat to see live metrics.</div>
         <div id="metrics-c" style="display:none">
+          <div class="cost-row">
+            <div class="cost-card total"><div class="cost-val" id="m-cost-total">—</div><div class="cost-lbl">Total Cost</div></div>
+            <div class="cost-card gate"><div class="cost-val" id="m-cost-gate">—</div><div class="cost-lbl">Gate</div></div>
+            <div class="cost-card analysis"><div class="cost-val" id="m-cost-analysis">—</div><div class="cost-lbl">Analysis</div></div>
+          </div>
           <div class="metrics-grid">
             <div class="m-card"><div class="m-val b" id="m-in">—</div><div class="m-lbl">Input Tokens</div></div>
             <div class="m-card"><div class="m-val g" id="m-out">—</div><div class="m-lbl">Output Tokens</div></div>
