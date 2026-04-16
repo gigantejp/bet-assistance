@@ -1,13 +1,25 @@
-const SPORTS=[
-  {key:'nba',icon:'🏀',label:'NBA'},{key:'wnba',icon:'🏀',label:'WNBA'},{key:'ncaam',icon:'🏀',label:'NCAA Bball'},
-  {key:'nfl',icon:'🏈',label:'NFL'},{key:'ncaaf',icon:'🏈',label:'CFB'},
-  {key:'mlb',icon:'⚾',label:'MLB'},{key:'nhl',icon:'🏒',label:'NHL'},
-  {key:'ufc',icon:'🥊',label:'UFC'},
-  {key:'epl',icon:'⚽',label:'EPL'},{key:'laliga',icon:'⚽',label:'La Liga'},
-  {key:'bundesliga',icon:'⚽',label:'Bundesliga'},{key:'seriea',icon:'⚽',label:'Serie A'},
-  {key:'ligue1',icon:'⚽',label:'Ligue 1'},{key:'ucl',icon:'⚽',label:'UCL'},
-  {key:'uel',icon:'⚽',label:'UEL'},{key:'mls',icon:'⚽',label:'MLS'},
-];
+let ODDS_API_SPORTS = [];
+let SPORT_GROUPS = {};
+let currentGroup = null;
+
+const GROUP_ICONS = {
+  'American Football': '🏈',
+  'Basketball': '🏀',
+  'Baseball': '⚾',
+  'Ice Hockey': '🏒',
+  'Mixed Martial Arts': '🥊',
+  'Soccer': '⚽',
+  'Tennis': '🎾',
+  'Golf': '⛳',
+  'Cricket': '🏏',
+  'Aussie Rules': '🏉',
+  'Rugby Union': '🏉',
+  'Rugby League': '🏉'
+};
+
+function getGroupIcon(group) {
+  return GROUP_ICONS[group] || '🏟️';
+}
 
 
 const SOCCER=new Set(['epl','laliga','bundesliga','seriea','ligue1','ucl','uel','mls']);
@@ -42,13 +54,13 @@ function getDemoOdds(sport,idx){
 function fo(n){return n>0?`+${n}`:`${n}`}
 function pc(n){return n>0?'pos':'neg'}
 
-// STATE
-let currentSport='nba',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
+let currentSport=null,currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
 let latestSportRequestId=0;
 const tabCounts={};
 
 // DOM
 const tabsEl=document.getElementById('sport-tabs');
+const leagueTabsEl=document.getElementById('league-tabs');
 const evPanel=document.getElementById('events-panel');
 const chatFab=document.getElementById('chat-fab');
 const chatModal=document.getElementById('chat-modal');
@@ -71,44 +83,87 @@ async function safeJson(r){
 
 // TABS
 function renderTabs(){
-  tabsEl.innerHTML=SPORTS.map(s=>{
-    const c=tabCounts[s.key];
-    const cnt=c!==undefined?c:'…';
-    return`<button class="sport-tab${s.key===currentSport?' active':''}" data-sport="${s.key}">${s.icon} ${s.label} <span class="tab-cnt">${cnt}</span></button>`;
+  const groups = Object.keys(SPORT_GROUPS);
+  tabsEl.innerHTML=groups.map(g=>{
+    const icon = getGroupIcon(g);
+    return`<button class="sport-tab${g===currentGroup?' active':''}" data-group="${g}">${icon} ${g}</button>`;
   }).join('');
+  
   tabsEl.querySelectorAll('.sport-tab').forEach(b=>b.addEventListener('click',()=>{
-    if(b.dataset.sport===currentSport)return;
-    currentSport=b.dataset.sport;selectedEvent=null;updateCtx();
-    renderTabs();b.scrollIntoView({inline:'nearest',block:'nearest'});loadSport(currentSport);
+    const g=b.dataset.group;
+    if(g===currentGroup)return;
+    currentGroup=g;
+    const firstLeague = SPORT_GROUPS[g]?.[0];
+    currentSport = firstLeague ? firstLeague.key : null;
+    selectedEvent=null;updateCtx();
+    renderTabs();b.scrollIntoView({inline:'nearest',block:'nearest'});
+    if(currentSport) loadSport(currentSport);
   }));
+
+  if(currentGroup && SPORT_GROUPS[currentGroup]) {
+    leagueTabsEl.style.display='flex';
+    leagueTabsEl.innerHTML=SPORT_GROUPS[currentGroup].map(l=>{
+      return `<button class="sport-tab${l.key===currentSport?' active':''}" data-sport="${l.key}">${l.title}</button>`;
+    }).join('');
+    leagueTabsEl.querySelectorAll('.sport-tab').forEach(b=>b.addEventListener('click',()=>{
+      const s=b.dataset.sport;
+      if(s===currentSport)return;
+      currentSport=s;
+      selectedEvent=null;updateCtx();
+      renderTabs();
+      loadSport(currentSport);
+    }));
+  } else {
+    leagueTabsEl.style.display='none';
+  }
 }
 
 async function fetchCounts(){
-  await Promise.allSettled(SPORTS.map(async s=>{
-    try{
-      const r=await fetch(`/api/scoreboard/${s.key}`,{signal:AbortSignal.timeout(10000)});
-      const d=await safeJson(r);
-      tabCounts[s.key]=(d.events||[]).length;
-    }catch{tabCounts[s.key]=0;}
-    renderTabs();
-  }));
+  // Counts disabled for Odds API to avoid hitting rate limits
+  renderTabs();
+}
+
+async function fetchSportsApi(){
+  try{
+    const r=await fetch('/api/sports');
+    if(!r.ok)throw new Error('Failed to fetch sports');
+    const data=await r.json();
+    ODDS_API_SPORTS = data;
+    SPORT_GROUPS = {};
+    data.forEach(s=>{
+      if(!SPORT_GROUPS[s.group]) SPORT_GROUPS[s.group]=[];
+      SPORT_GROUPS[s.group].push(s);
+    });
+    const groups = Object.keys(SPORT_GROUPS);
+    if(groups.length>0){
+      currentGroup = groups[0];
+      currentSport = SPORT_GROUPS[currentGroup][0].key;
+    }
+  }catch(e){
+    console.error(e);
+    evPanel.innerHTML=`<div class="state-msg">
+      <strong style="color:var(--warn)">⚠ Odds API Key Required</strong><br><br>
+      Please add <code>ODDSAPI_API_KEY=your_key_here</code> to your <code>.env</code> file and restart the server.
+    </div>`;
+  }
 }
 
 // EVENTS
 async function loadSport(sport){
+  if(!sport) return;
   const requestId=++latestSportRequestId;
   currentEvents=[];
-  currentLeagueName=(SPORTS.find(s=>s.key===sport)||{}).label||sport.toUpperCase();
+  const leagueObj = ODDS_API_SPORTS.find(s=>s.key===sport);
+  currentLeagueName=leagueObj ? leagueObj.title : sport.toUpperCase();
   selectedEvent=null;
   currentEventIndex=null;
   updateCtx();
   evPanel.innerHTML='<div class="state-msg loading">Loading events…</div>';
   try{
-    const r=await fetch(`/api/scoreboard/${sport}`,{signal:AbortSignal.timeout(10000)});
+    const r=await fetch(`/api/odds-api/events/${sport}`,{signal:AbortSignal.timeout(10000)});
     const d=await safeJson(r);
     if(requestId!==latestSportRequestId||sport!==currentSport)return;
     currentEvents=d.events||[];
-    currentLeagueName=d.leagues?.[0]?.name||currentLeagueName;
     renderEvents(currentEvents,sport,currentLeagueName);
   }catch(e){evPanel.innerHTML=`<div class="state-msg">Could not load events: ${esc(e.message)}</div>`;}
 }
@@ -116,11 +171,12 @@ async function loadSport(sport){
 function renderEvents(events,sport,leagueName){
   if(!events.length){evPanel.innerHTML='<div class="state-msg">No events available right now.</div>';return;}
   currentView='league';
-  const sm=SPORTS.find(s=>s.key===sport)||{icon:'🏟️',label:sport.toUpperCase()};
+  const leagueObj = ODDS_API_SPORTS.find(s=>s.key===sport);
+  const sm={icon:getGroupIcon(leagueObj?.group),label:leagueName};
   const{cols,soc,mlb}=getMarkets(sport);
   if(mlb){renderBaseballLeague(events,leagueName,sm);return;}
   const gc=soc?'sg':'';
-  let html=`<div class="league-label">${sm.icon} ${esc(leagueName||sm.label)}</div>`;
+  let html=`<div class="league-label">${sm.icon} ${esc(leagueName)}</div>`;
   html+=`<div class="tbl-header ${gc}"><div class="th">Event</div><div class="th">${esc(cols[0])}</div><div class="th">${esc(cols[1])}</div><div class="th">${esc(cols[2])}</div></div>`;
   events.forEach((ev,i)=>{html+=makeRow(ev,i,sport,soc,gc);});
   evPanel.innerHTML=html;
@@ -243,7 +299,7 @@ function renderEventPage(ev,idx,sport){
   const markets=getBaseballMarkets(idx,aAb,hAb,false);
   const cards=markets.map(m=>`<article class="event-market-card"><h4>${esc(m.name)}</h4><div class="event-market-grid">${m.options.map(o=>`<button class="odd-btn"><span class="odd-line">${esc(o.label)}</span><span class="odd-price ${pc(o.price)}">${fo(o.price)}</span></button>`).join('')}</div></article>`).join('');
   evPanel.innerHTML=`<div class="event-page">
-    <button class="h-btn event-back" id="event-back">← Back to ${esc((SPORTS.find(s=>s.key===sport)?.label)||sport.toUpperCase())}</button>
+    <button class="h-btn event-back" id="event-back">← Back to ${esc(currentLeagueName)}</button>
     <div class="event-hero">
       <div class="event-title">${esc(aN)} @ ${esc(hN)}</div>
       <div class="event-sub">${esc(fmtDate(ev.date))} · ${esc(status)}</div>
@@ -583,8 +639,9 @@ async function init(){
       '<span style="color:var(--warn)">⚠ AI offline — ESPN events load fine. Run <code>node server.js</code> for AI chat.</span>';
   }
 
+  await fetchSportsApi();
   renderTabs();
-  await loadSport(currentSport);
+  if(currentSport) await loadSport(currentSport);
   fetchCounts();
 }
 init();

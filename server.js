@@ -197,6 +197,38 @@ app.get("/api/scoreboard/:sport", async (req, res) => {
     fetchedAt: new Date().toISOString(),
   });
 });
+
+app.get("/api/sports", async (req, res) => {
+  const apiKey = process.env.ODDSAPI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "Missing Odds API key in environment variables" });
+  try {
+    const response = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${apiKey}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/odds-api/events/:oddsKey", async (req, res) => {
+  const oddsKey = req.params.oddsKey;
+  const apiKey  = process.env.ODDSAPI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "Missing Odds API key" });
+  const url = `https://api.the-odds-api.com/v4/sports/${oddsKey}/odds?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+  try {
+    const response = await fetch(url, { timeout: 8000 });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const raw = await response.json();
+    res.json({
+        events: normalizeOddsAPIEvents(raw),
+        provider: "odds-api",
+        sport: oddsKey,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 async function callClaude(prompt, history = []) {
   return await anthropicClient.messages.stream({
     model: "claude-opus-4-6",
