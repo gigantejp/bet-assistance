@@ -55,7 +55,6 @@ const ESPN_ENDPOINTS = {
   nll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard",
 };
 
-
 async function espnFetch(key) {
   const url = ESPN_ENDPOINTS[key];
   if (!url) return null;
@@ -67,6 +66,114 @@ async function espnFetch(key) {
     console.error(`espnFetch(${key}):`, err.message);
     return null;
   }
+}
+
+// ── THE ODDS API ──────────────────────────────────────────────────────────────
+// Maps internal sport keys (ESPN-style) → The Odds API sport keys.
+// Sports not in this map fall back to ESPN automatically.
+const ODDS_API_KEYS = {
+  nba:        "basketball_nba",
+  wnba:       "basketball_wnba",
+  ncaam:      "basketball_ncaab",
+  nfl:        "americanfootball_nfl",
+  ncaaf:      "americanfootball_ncaaf",
+  mlb:        "baseball_mlb",
+  nhl:        "icehockey_nhl",
+  ufc:        "mma_mixed_martial_arts",
+  epl:        "soccer_england_premier_league",
+  laliga:     "soccer_spain_la_liga",
+  bundesliga: "soccer_germany_bundesliga",
+  seriea:     "soccer_italy_serie_a",
+  ligue1:     "soccer_france_ligue_one",
+  mls:        "soccer_usa_mls",
+  ucl:        "soccer_uefa_champs_league",
+  uel:        "soccer_uefa_europa_league",
+};
+
+async function oddsFetch(sportKey) {
+  const oddsKey = ODDS_API_KEYS[sportKey];
+  const apiKey  = process.env.ODDS_API_KEY;
+  if (!oddsKey || !apiKey) return null;
+  const url = `https://api.the-odds-api.com/v4/sports/${oddsKey}/odds?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+  try {
+    const res = await fetch(url, { timeout: 8000 });
+    if (!res.ok) { console.error(`oddsFetch(${sportKey}): HTTP ${res.status}`); return null; }
+    // Log remaining quota from response headers
+    const remaining = res.headers.get("x-requests-remaining");
+    const used      = res.headers.get("x-requests-used");
+    if (remaining) console.log(`[ODDS API] quota — used: ${used}, remaining: ${remaining}`);
+    return await res.json();
+  } catch (err) {
+    console.error(`oddsFetch(${sportKey}):`, err.message);
+    return null;
+  }
+}
+
+// Normalize Odds API response → common event format (same shape as ESPN events).
+// realOdds field carries actual sportsbook lines for the LLM and UI.
+function normalizeOddsAPIEvents(events) {
+  return (events || []).map(ev => {
+    const bookmaker  = ev.bookmakers?.[0];
+    const h2h        = bookmaker?.markets?.find(m => m.key === "h2h");
+    const spreads    = bookmaker?.markets?.find(m => m.key === "spreads");
+    const totals     = bookmaker?.markets?.find(m => m.key === "totals");
+
+    const awayH2H    = h2h?.outcomes?.find(o => o.name === ev.away_team);
+    const homeH2H    = h2h?.outcomes?.find(o => o.name === ev.home_team);
+    const drawH2H    = h2h?.outcomes?.find(o => o.name === "Draw");
+    const awaySpread = spreads?.outcomes?.find(o => o.name === ev.away_team);
+    const homeSpread = spreads?.outcomes?.find(o => o.name === ev.home_team);
+    const over       = totals?.outcomes?.find(o => o.name === "Over");
+
+    const gameTime = new Date(ev.commence_time);
+    const isPast   = gameTime < new Date();
+    const shortDetail = gameTime.toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      month: "numeric", day: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    });
+
+    return {
+      id:       ev.id,
+      date:     ev.commence_time,
+      provider: "odds-api",
+      competitions: [{
+        competitors: [
+          { homeAway: "away", score: null, team: { displayName: ev.away_team, abbreviation: ev.away_team.split(" ").slice(-1)[0].slice(0, 3).toUpperCase() } },
+          { homeAway: "home", score: null, team: { displayName: ev.home_team, abbreviation: ev.home_team.split(" ").slice(-1)[0].slice(0, 3).toUpperCase() } },
+        ],
+        status: { type: {
+          state: isPast ? "post" : "pre",
+          completed: isPast,
+          description: isPast ? "Final" : "Scheduled",
+          shortDetail: isPast ? "Final" : shortDetail,
+        }},
+        realOdds: {
+          away_ml:           awayH2H?.price    ?? null,
+          home_ml:           homeH2H?.price    ?? null,
+          draw:              drawH2H?.price    ?? null,
+          spread:            awaySpread?.point ?? null,
+          away_spread_juice: awaySpread?.price ?? null,
+          home_spread_juice: homeSpread?.price ?? null,
+          total:             over?.point       ?? null,
+          bookmaker:         bookmaker?.title  ?? null,
+        },
+      }],
+    };
+  });
+}
+
+// Unified fetch — returns { events, leagues } in common format regardless of provider.
+// Falls back to ESPN for sports not supported by The Odds API.
+async function providerFetch(sport, provider = "espn") {
+  if (provider === "odds-api" && ODDS_API_KEYS[sport]) {
+    const raw = await oddsFetch(sport);
+    if (raw) return { events: normalizeOddsAPIEvents(raw), leagues: [] };
+    console.warn(`[providerFetch] odds-api failed for ${sport}, falling back to ESPN`);
+  }
+  const raw = await espnFetch(sport);
+  if (!raw) return null;
+  return { events: raw.events || [], leagues: raw.leagues || [] };
 }
 
 function detectIntent(q) {
@@ -138,18 +245,20 @@ User question: "${userQuery}"`;
 
 
 app.get("/api/scoreboard/:sport", async (req, res) => {
-  const sport = (req.params.sport || "").toLowerCase();
-  if (!ESPN_ENDPOINTS[sport]) {
+  const sport      = (req.params.sport || "").toLowerCase();
+  const provider   = ["espn", "odds-api"].includes(req.query.provider) ? req.query.provider : "espn";
+
+  if (!ESPN_ENDPOINTS[sport] && !ODDS_API_KEYS[sport]) {
     return res.status(400).json({ error: `Unsupported sport: ${sport}` });
   }
 
-  const data = await espnFetch(sport);
+  const data = await providerFetch(sport, provider);
   if (!data) {
-    return res.status(502).json({ error: "Failed to fetch ESPN data" });
+    return res.status(502).json({ error: `Failed to fetch data from ${provider}` });
   }
 
   return res.json({
-    sport,
+    sport, provider,
     leagues: data.leagues || [],
     events: data.events || [],
     fetchedAt: new Date().toISOString(),
@@ -658,8 +767,24 @@ function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}
     lines.push(line);
     lines.push(`  Actionable: ${completed ? "No - event completed" : "Yes - event not completed"}`);
 
-    const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
-    lines.push(`  Odds: ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`);
+    const realOdds = comp?.realOdds;
+    if (realOdds && (realOdds.away_ml != null || realOdds.home_ml != null)) {
+      const fmt = n => n == null ? null : (n > 0 ? `+${n}` : `${n}`);
+      const mlParts = [
+        realOdds.away_ml != null && `${awayName} ${fmt(realOdds.away_ml)}`,
+        realOdds.draw    != null && `Draw ${fmt(realOdds.draw)}`,
+        realOdds.home_ml != null && `${homeName} ${fmt(realOdds.home_ml)}`,
+      ].filter(Boolean);
+      const extra = [
+        realOdds.spread != null && `Spread: ${awayName} ${realOdds.spread > 0 ? "+" : ""}${realOdds.spread} (${fmt(realOdds.away_spread_juice)})`,
+        realOdds.total  != null && `O/U ${realOdds.total}`,
+      ].filter(Boolean);
+      const bk = realOdds.bookmaker ? ` [${realOdds.bookmaker}]` : "";
+      lines.push(`  Odds (live${bk}): ${mlParts.join(" | ")}${extra.length ? " · " + extra.join(" · ") : ""}`);
+    } else {
+      const odds = DEMO_MARKETS[i % DEMO_MARKETS.length];
+      lines.push(`  Odds (demo): ${awayName} ${odds.away} | Draw ${odds.draw} | ${homeName} ${odds.home}`);
+    }
   });
 
   return lines.join("\n");
@@ -795,7 +920,9 @@ app.post("/api/assistant/chat", async (req, res) => {
     activeLeague = "",
     selectedEventId = null,
     currentView = "league",
+    provider: reqDataProvider = "espn",
   } = req.body;
+  const dataProvider = ["espn", "odds-api"].includes(reqDataProvider) ? reqDataProvider : "espn";
   if (!userQuery?.trim()) {
     res.status(400).json({ error: "userQuery is required" });
     return;
@@ -843,9 +970,9 @@ app.post("/api/assistant/chat", async (req, res) => {
   let resolvedSport  = activeSport;
 
   if (explicitSport && explicitSport !== activeSport) {
-    const espnData = await espnFetch(explicitSport);
-    if (espnData?.events?.length) {
-      resolvedEvents = espnData.events.slice(0, 10).map(ev => {
+    const fetched = await providerFetch(explicitSport, dataProvider);
+    if (fetched?.events?.length) {
+      resolvedEvents = fetched.events.slice(0, 10).map(ev => {
         const comp = ev.competitions?.[0];
         return {
           id: ev.id, uid: ev.uid, date: ev.date,
@@ -858,6 +985,7 @@ app.post("/api/assistant/chat", async (req, res) => {
               state: comp?.status?.type?.state, completed: comp?.status?.type?.completed,
               description: comp?.status?.type?.description, shortDetail: comp?.status?.type?.shortDetail,
             }},
+            realOdds: comp?.realOdds || null,
           }],
         };
       });

@@ -132,6 +132,10 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
 .model-sel{flex:1;background:#0e2a40;border:1px solid var(--accent);color:var(--text);padding:5px 8px;border-radius:6px;font-size:.76rem;cursor:pointer;outline:none}
 .model-sel:focus{border-color:var(--green)}
 .model-hint{font-size:.66rem;color:var(--green);font-weight:700;white-space:nowrap}
+.provider-toggle{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex-shrink:0}
+.prov-btn{background:none;border:none;color:var(--muted);padding:5px 11px;font-size:.72rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap}
+.prov-btn.active{background:var(--accent);color:#fff}
+.prov-btn:hover:not(.active){background:var(--card);color:var(--text)}
 .chat-fab{position:fixed;bottom:22px;right:22px;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:11px 20px;font-size:.86rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(59,158,255,.4);z-index:100;transition:transform .15s,box-shadow .15s;font-family:inherit}
 .chat-fab:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(59,158,255,.5)}
 .fab-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1.4s ease-in-out infinite}
@@ -187,6 +191,10 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
     <span id="srv-lbl">Checking…</span>
   </span>
   <span class="h-spacer"></span>
+  <div class="provider-toggle" id="provider-toggle">
+    <button class="prov-btn active" data-prov="espn">ESPN</button>
+    <button class="prov-btn" data-prov="odds-api">The Odds API</button>
+  </div>
   <button class="h-btn">Log In</button>
   <button class="h-btn primary">Sign Up</button>
 </header>

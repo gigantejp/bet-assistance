@@ -79,7 +79,7 @@ function fo(n){return n>0?`+${n}`:`${n}`}
 function pc(n){return n>0?'pos':'neg'}
 
 // STATE
-let currentSport='nba',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
+let currentSport='nba',currentProvider='espn',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
 let latestSportRequestId=0;
 const tabCounts={};
 
@@ -123,7 +123,7 @@ async function fetchCounts(){
   await Promise.allSettled(SPORTS.map(async s=>{
     try{
       let d;
-      try{const r=await fetch(`/api/scoreboard/${s.key}`,{signal:AbortSignal.timeout(3000)});d=await safeJson(r);}
+      try{const r=await fetch(`/api/scoreboard/${s.key}?provider=${currentProvider}`,{signal:AbortSignal.timeout(3000)});d=await safeJson(r);}
       catch{const r=await fetch(ESPN_DIRECT[s.key],{cache:'no-store',signal:AbortSignal.timeout(3000)});d=await r.json();}
       tabCounts[s.key]=(d.events||[]).length;
     }catch{tabCounts[s.key]=0;}
@@ -142,7 +142,7 @@ async function loadSport(sport){
   evPanel.innerHTML='<div class="state-msg loading">Loading events…</div>';
   try{
     let d;
-    try{const r=await fetch(`/api/scoreboard/${sport}`,{signal:AbortSignal.timeout(4000)});d=await safeJson(r);}
+    try{const r=await fetch(`/api/scoreboard/${sport}?provider=${currentProvider}`,{signal:AbortSignal.timeout(4000)});d=await safeJson(r);}
     catch{const r=await fetch(ESPN_DIRECT[sport],{cache:'no-store'});d=await r.json();}
     if(requestId!==latestSportRequestId||sport!==currentSport)return;
     currentEvents=d.events||[];
@@ -218,7 +218,18 @@ function makeRow(ev,idx,sport,soc,gc){
   const detail=comp?.status?.type?.shortDetail||comp?.status?.type?.description||'Scheduled';
   const isLive=state==='in';
   const aS=aw.score??null,hS=hm.score??null;
-  const o=getDemoOdds(sport,idx);
+  const realOdds=comp?.realOdds;
+  const hasReal=realOdds&&(realOdds.away_ml!=null||realOdds.home_ml!=null);
+  const demoO=getDemoOdds(sport,idx);
+  const o=hasReal?{
+    away_ml:realOdds.away_ml??demoO.away_ml,
+    home_ml:realOdds.home_ml??demoO.home_ml,
+    spread:Math.abs(realOdds.spread??demoO.spread),
+    aspj:realOdds.away_spread_juice??demoO.aspj,
+    hspj:realOdds.home_spread_juice??demoO.hspj,
+    draw:realOdds.draw??demoO.draw,
+    total:realOdds.total??demoO.total,
+  }:demoO;
   const selCls=selectedEvent===ev?' sel':'';
   const timeHtml=isLive
     ?`<div class="ev-time live"><span class="ldot"></span>LIVE — ${esc(detail)}</div>`
@@ -379,7 +390,8 @@ async function sendChat(){
           completed:comp?.status?.type?.completed,
           description:comp?.status?.type?.description,
           shortDetail:comp?.status?.type?.shortDetail
-        }}
+        }},
+        realOdds:comp?.realOdds||null
       }]
     };
   });
@@ -395,6 +407,7 @@ async function sendChat(){
       activeLeague:currentLeagueName,
       selectedEventId:selectedEvent?.id||selectedEvent?.uid||null,
       currentView,
+      provider:currentProvider,
     })});
     if(!r.ok && !r.headers.get('content-type')?.includes('text/event-stream')){
       throw new Error(`Server error (HTTP ${r.status}). Please try again.`);
@@ -608,6 +621,16 @@ async function init(){
     ctxStrip.innerHTML=
       '<span style="color:var(--warn)">⚠ AI offline — ESPN events load fine. Run <code>node server.js</code> for AI chat.</span>';
   }
+
+  // Provider toggle
+  document.querySelectorAll('.prov-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    if(btn.dataset.prov===currentProvider)return;
+    currentProvider=btn.dataset.prov;
+    document.querySelectorAll('.prov-btn').forEach(b=>b.classList.toggle('active',b.dataset.prov===currentProvider));
+    selectedEvent=null;updateCtx();
+    loadSport(currentSport);
+    fetchCounts();
+  }));
 
   renderTabs();
   await loadSport(currentSport);
