@@ -1031,6 +1031,17 @@ app.get("/api/feedback", (req, res) => {
   }
 });
 
+// Download feedback.jsonl as a file
+app.get("/api/feedback/download", (req, res) => {
+  if (!fs.existsSync(FEEDBACK_FILE)) {
+    return res.status(404).json({ error: "No feedback collected yet" });
+  }
+  const filename = `feedback-${new Date().toISOString().slice(0,10)}.jsonl`;
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.sendFile(FEEDBACK_FILE);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Betting assistant running at http://localhost:${PORT}`);
