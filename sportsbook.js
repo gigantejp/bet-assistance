@@ -556,7 +556,21 @@ function updateMetrics(log){
   document.getElementById('m-out').textContent=log.response_size_tokens||'—';
   document.getElementById('m-cache').textContent=log.cache_read_tokens||'0';
   document.getElementById('m-lat').textContent=log.latency_ms||'—';
+  // Cost section
+  document.getElementById('m-cost-total').textContent=formatCost(log.total_cost_usd);
+  document.getElementById('m-cost-gate').textContent=formatCost(log.gate_cost_usd);
+  document.getElementById('m-cost-analysis').textContent=formatCost(log.cost_usd);
   document.getElementById('log-box').innerHTML=Object.entries(log).map(([k,v])=>`<span class="lk">${k}</span>: <span class="lv">${JSON.stringify(v)}</span>`).join('\n');
+}
+
+function formatCost(usd){
+  if(usd===undefined||usd===null||usd==='')return'—';
+  if(usd===0)return'$0.000';
+  if(usd<0.0001)return'<$0.0001';
+  if(usd<0.001)return'$'+usd.toFixed(5);
+  if(usd<0.01)return'$'+usd.toFixed(4);
+  if(usd<0.10)return'$'+usd.toFixed(3);
+  return'$'+usd.toFixed(2);
 }
 
 function formatModelHint(model){
