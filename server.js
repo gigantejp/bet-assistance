@@ -302,7 +302,9 @@ EVENT VALIDATION
 * Completed event → decision = "pass", explain betting is closed
 * Do NOT suggest bets for completed events
 
-OUTPUT: return ONLY valid JSON — no text outside the JSON block.`,
+OUTPUT FORMAT
+1. First, think step-by-step inside <thinking></thinking> tags. Analyze the matchup, odds, and find the best value.
+2. Then, return ONLY a valid JSON block containing your final recommendation.`,
 };
 
 // ─── INTENT GATE ─────────────────────────────────────────────────────────────
@@ -681,7 +683,7 @@ function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}
     !explicitSport &&
     !broaderScopeQuery &&
     (eventPageActive || eventScopedQuery);
-  const effectiveEvents = forceEventScope ? events.slice(0, 1) : events.slice(0, 5);
+  const effectiveEvents = forceEventScope ? events.slice(0, 1) : events.slice(0, 10);
 
   if (activeLeague) {
     lines.push(`Active league page: ${activeLeague}`);
@@ -782,7 +784,7 @@ ${context}
 USER QUERY
 ${query}${instruction ? `\n\nINSTRUCTION\n${instruction}` : ""}
 
-Return ONLY valid JSON:
+Please think step-by-step inside <thinking></thinking> tags. Then return ONLY valid JSON:
 ${schema}`;
 }
 
@@ -800,7 +802,7 @@ function buildPromptPayload(userQuery, formattedContext, intent) {
       intentDecision: explainIntentDecision(userQuery, detectedIntent),
       contextData: formattedContext,
       userInput: userQuery,
-      outputFormat,
+      outputFormat: `Please think step-by-step inside <thinking></thinking> tags. Then return ONLY valid JSON:\n${outputFormat}`,
       fullPromptSystem: PROMPT_SYSTEM.text,
       fullPromptUser: userMessage,
     },
@@ -835,7 +837,13 @@ function parseResponse(text = "") {
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No JSON block found in response");
-    const parsed = JSON.parse(match[0]);
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch (e) {
+      throw new Error("JSON parsing failed. The response may have been cut off due to token limits.");
+    }
     if (!VALID_DECISIONS.has(parsed.decision)) parsed.decision = "pass";
     parsed.confidence = VALID_CONFIDENCE.has((parsed.confidence || "").toLowerCase())
       ? parsed.confidence.toLowerCase()
@@ -864,7 +872,7 @@ async function generateAIResponse(query, context, model, intent) {
     system: promptPayload.system,
     userMessage: promptPayload.userMessage,
     temperature: 0.5,
-    maxTokens: 600,
+    maxTokens: 1500,
   });
 }
 
