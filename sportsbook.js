@@ -2,56 +2,20 @@ const SPORTS=[
   {key:'nba',icon:'🏀',label:'NBA'},{key:'wnba',icon:'🏀',label:'WNBA'},{key:'ncaam',icon:'🏀',label:'NCAA Bball'},
   {key:'nfl',icon:'🏈',label:'NFL'},{key:'ncaaf',icon:'🏈',label:'CFB'},
   {key:'mlb',icon:'⚾',label:'MLB'},{key:'nhl',icon:'🏒',label:'NHL'},
+  {key:'ufc',icon:'🥊',label:'UFC'},
   {key:'epl',icon:'⚽',label:'EPL'},{key:'laliga',icon:'⚽',label:'La Liga'},
   {key:'bundesliga',icon:'⚽',label:'Bundesliga'},{key:'seriea',icon:'⚽',label:'Serie A'},
   {key:'ligue1',icon:'⚽',label:'Ligue 1'},{key:'ucl',icon:'⚽',label:'UCL'},
   {key:'uel',icon:'⚽',label:'UEL'},{key:'mls',icon:'⚽',label:'MLS'},
-  {key:'ufc',icon:'🥊',label:'UFC'},{key:'bellator',icon:'🥊',label:'Bellator'},
-  {key:'atp',icon:'🎾',label:'ATP'},{key:'wta',icon:'🎾',label:'WTA'},
-  {key:'pga',icon:'⛳',label:'PGA'},{key:'lpga',icon:'⛳',label:'LPGA'},{key:'liv',icon:'⛳',label:'LIV Golf'},
-  {key:'f1',icon:'🏎️',label:'F1'},{key:'nascar',icon:'🏎️',label:'NASCAR'},{key:'indycar',icon:'🏎️',label:'IndyCar'},
-  {key:'ipl',icon:'🏏',label:'IPL'},{key:'icct20',icon:'🏏',label:'ICC T20'},
-  {key:'pll',icon:'🥍',label:'PLL'},{key:'nll',icon:'🥍',label:'NLL'},
 ];
 
-const ESPN_DIRECT={
-  nba:'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
-  wnba:'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard',
-  ncaam:'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
-  nfl:'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
-  ncaaf:'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80',
-  mlb:'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard',
-  nhl:'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard',
-  ucl:'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
-  epl:'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
-  laliga:'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard',
-  bundesliga:'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard',
-  seriea:'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard',
-  ligue1:'https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard',
-  mls:'https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard',
-  uel:'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard',
-  ufc:'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard',
-  bellator:'https://site.api.espn.com/apis/site/v2/sports/mma/bellator/scoreboard',
-  atp:'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard',
-  wta:'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/scoreboard',
-  pga:'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard',
-  lpga:'https://site.api.espn.com/apis/site/v2/sports/golf/lpga/scoreboard',
-  liv:'https://site.api.espn.com/apis/site/v2/sports/golf/liv/scoreboard',
-  f1:'https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard',
-  nascar:'https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard',
-  indycar:'https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard',
-  ipl:'https://site.api.espn.com/apis/site/v2/sports/cricket/ipl/scoreboard',
-  icct20:'https://site.api.espn.com/apis/site/v2/sports/cricket/icc.t20/scoreboard',
-  pll:'https://site.api.espn.com/apis/site/v2/sports/lacrosse/pll/scoreboard',
-  nll:'https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard',
-};
 
 const SOCCER=new Set(['epl','laliga','bundesliga','seriea','ligue1','ucl','uel','mls']);
 function getMarkets(k){
   if(SOCCER.has(k))return{cols:['1X2','Total Goals','Both Score'],soc:true};
   if(k==='mlb')return{cols:['2-Way Markets'],soc:false,mlb:true};
   if(k==='nhl')return{cols:['Puck Line','Total','Moneyline'],soc:false};
-  if(k==='ufc'||k==='bellator')return{cols:['Winner','Method','Round'],soc:false};
+  if(k==='ufc')return{cols:['Winner','Method','Round'],soc:false};
   if(k==='atp'||k==='wta')return{cols:['Match Winner','Set Hdcp','Total Sets'],soc:false};
   if(['pga','lpga','liv'].includes(k))return{cols:['Win','Top 5','Top 10'],soc:false};
   if(['f1','nascar','indycar'].includes(k))return{cols:['Win','Podium','Top 10'],soc:false};
@@ -79,7 +43,7 @@ function fo(n){return n>0?`+${n}`:`${n}`}
 function pc(n){return n>0?'pos':'neg'}
 
 // STATE
-let currentSport='nba',currentProvider='espn',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
+let currentSport='nba',currentEvents=[],selectedEvent=null,currentEventIndex=null,currentView='league',currentLeagueName='',isLoading=false,serverOnline=false;
 let latestSportRequestId=0;
 const tabCounts={};
 
@@ -97,7 +61,7 @@ const srvDot=document.getElementById('srv-dot');
 
 // SERVER
 async function checkServer(){
-  try{const r=await fetch('/api/scoreboard/nba',{signal:AbortSignal.timeout(2000)});return r.ok||r.status<500;}catch{return false;}
+  try{const r=await fetch('/api/health',{signal:AbortSignal.timeout(3000)});return r.ok;}catch{return false;}
 }
 async function safeJson(r){
   const ct=r.headers.get('content-type')||'';
@@ -122,9 +86,8 @@ function renderTabs(){
 async function fetchCounts(){
   await Promise.allSettled(SPORTS.map(async s=>{
     try{
-      let d;
-      try{const r=await fetch(`/api/scoreboard/${s.key}?provider=${currentProvider}`,{signal:AbortSignal.timeout(3000)});d=await safeJson(r);}
-      catch{const r=await fetch(ESPN_DIRECT[s.key],{cache:'no-store',signal:AbortSignal.timeout(3000)});d=await r.json();}
+      const r=await fetch(`/api/scoreboard/${s.key}`,{signal:AbortSignal.timeout(10000)});
+      const d=await safeJson(r);
       tabCounts[s.key]=(d.events||[]).length;
     }catch{tabCounts[s.key]=0;}
     renderTabs();
@@ -141,9 +104,8 @@ async function loadSport(sport){
   updateCtx();
   evPanel.innerHTML='<div class="state-msg loading">Loading events…</div>';
   try{
-    let d;
-    try{const r=await fetch(`/api/scoreboard/${sport}?provider=${currentProvider}`,{signal:AbortSignal.timeout(4000)});d=await safeJson(r);}
-    catch{const r=await fetch(ESPN_DIRECT[sport],{cache:'no-store'});d=await r.json();}
+    const r=await fetch(`/api/scoreboard/${sport}`,{signal:AbortSignal.timeout(10000)});
+    const d=await safeJson(r);
     if(requestId!==latestSportRequestId||sport!==currentSport)return;
     currentEvents=d.events||[];
     currentLeagueName=d.leagues?.[0]?.name||currentLeagueName;
@@ -407,7 +369,6 @@ async function sendChat(){
       activeLeague:currentLeagueName,
       selectedEventId:selectedEvent?.id||selectedEvent?.uid||null,
       currentView,
-      provider:currentProvider,
     })});
     if(!r.ok && !r.headers.get('content-type')?.includes('text/event-stream')){
       throw new Error(`Server error (HTTP ${r.status}). Please try again.`);
@@ -621,16 +582,6 @@ async function init(){
     ctxStrip.innerHTML=
       '<span style="color:var(--warn)">⚠ AI offline — ESPN events load fine. Run <code>node server.js</code> for AI chat.</span>';
   }
-
-  // Provider toggle
-  document.querySelectorAll('.prov-btn').forEach(btn=>btn.addEventListener('click',()=>{
-    if(btn.dataset.prov===currentProvider)return;
-    currentProvider=btn.dataset.prov;
-    document.querySelectorAll('.prov-btn').forEach(b=>b.classList.toggle('active',b.dataset.prov===currentProvider));
-    selectedEvent=null;updateCtx();
-    loadSport(currentSport);
-    fetchCounts();
-  }));
 
   renderTabs();
   await loadSport(currentSport);
