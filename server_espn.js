@@ -11,6 +11,63 @@ app.use(express.static(__dirname));
 
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// ESPN public APIs — no auth, no Cloudflare
+const ESPN_ENDPOINTS = {
+  // Basketball
+  nba:        "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+  wnba:       "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard",
+  ncaam:      "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard",
+  // Football
+  nfl:        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  ncaaf:      "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80",
+  // Baseball
+  mlb:        "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+  // Hockey
+  nhl:        "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
+  // Soccer
+  ucl:        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
+  epl:        "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  laliga:     "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  bundesliga: "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  seriea:     "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  ligue1:     "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  mls:        "https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard",
+  uel:        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard",
+  // MMA
+  ufc:        "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
+  bellator:   "https://site.api.espn.com/apis/site/v2/sports/mma/bellator/scoreboard",
+  // Tennis
+  atp:        "https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard",
+  wta:        "https://site.api.espn.com/apis/site/v2/sports/tennis/wta/scoreboard",
+  // Golf
+  pga:        "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard",
+  lpga:       "https://site.api.espn.com/apis/site/v2/sports/golf/lpga/scoreboard",
+  liv:        "https://site.api.espn.com/apis/site/v2/sports/golf/liv/scoreboard",
+  // Racing
+  f1:         "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard",
+  nascar:     "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard",
+  indycar:    "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard",
+  // Cricket
+  ipl:        "https://site.api.espn.com/apis/site/v2/sports/cricket/ipl/scoreboard",
+  icct20:     "https://site.api.espn.com/apis/site/v2/sports/cricket/icc.t20/scoreboard",
+  // Lacrosse
+  pll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/pll/scoreboard",
+  nll:        "https://site.api.espn.com/apis/site/v2/sports/lacrosse/nll/scoreboard",
+};
+
+async function espnFetch(key) {
+  const url = ESPN_ENDPOINTS[key];
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { timeout: 8000 });
+    if (!res.ok) { console.error(`espnFetch(${key}): HTTP ${res.status}`); return null; }
+    return await res.json();
+  } catch (err) {
+    console.error(`espnFetch(${key}):`, err.message);
+    return null;
+  }
+}
+
 // ── THE ODDS API ──────────────────────────────────────────────────────────────
 // Maps internal sport keys (ESPN-style) → The Odds API sport keys.
 // Sports not in this map fall back to ESPN automatically.
@@ -35,7 +92,7 @@ const ODDS_API_KEYS = {
 
 async function oddsFetch(sportKey) {
   const oddsKey = ODDS_API_KEYS[sportKey];
-  const apiKey  = process.env.ODDSAPI_API_KEY;
+  const apiKey  = process.env.ODDS_API_KEY;
   if (!oddsKey || !apiKey) return null;
   const url = `https://api.the-odds-api.com/v4/sports/${oddsKey}/odds?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
   try {
@@ -106,10 +163,17 @@ function normalizeOddsAPIEvents(events) {
   });
 }
 
-async function fetchSport(sport) {
-  const raw = await oddsFetch(sport);
+// Unified fetch — returns { events, leagues } in common format regardless of provider.
+// Falls back to ESPN for sports not supported by The Odds API.
+async function providerFetch(sport, provider = "espn") {
+  if (provider === "odds-api" && ODDS_API_KEYS[sport]) {
+    const raw = await oddsFetch(sport);
+    if (raw) return { events: normalizeOddsAPIEvents(raw), leagues: [] };
+    console.warn(`[providerFetch] odds-api failed for ${sport}, falling back to ESPN`);
+  }
+  const raw = await espnFetch(sport);
   if (!raw) return null;
-  return { events: normalizeOddsAPIEvents(raw), leagues: [] };
+  return { events: raw.events || [], leagues: raw.leagues || [] };
 }
 
 function detectIntent(q) {
@@ -145,7 +209,7 @@ function detectIntent(q) {
   return "nba";
 }
 
-function parseGames(data) {
+function parseESPNGames(data, intent) {
   if (!data || !data.events) return null;
   return data.events.slice(0, 10).map(e => {
     const comp = e.competitions[0];
@@ -156,10 +220,11 @@ function parseGames(data) {
   }).join("\n");
 }
 
-function buildLegacyPrompt(intent, sportData, userQuery) {
-  const gamesText = parseGames(sportData);
+function buildLegacyPrompt(intent, espnData, userQuery) {
+  const sbUrl = SB_URLS[intent] || SB_URLS.default;
+  const gamesText = parseESPNGames(espnData, intent);
   const dataSection = gamesText
-    ? `UPCOMING/LIVE GAMES (${intent.toUpperCase()}):\n${gamesText}`
+    ? `UPCOMING/LIVE GAMES (${intent.toUpperCase()}) from ESPN:\n${gamesText}`
     : `No live game data available for ${intent} right now.`;
 
   return `You are a helpful sports betting assistant.
@@ -179,20 +244,22 @@ User question: "${userQuery}"`;
 
 
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
 app.get("/api/scoreboard/:sport", async (req, res) => {
-  const sport = (req.params.sport || "").toLowerCase();
-  if (!ODDS_API_KEYS[sport]) {
-    return res.status(400).json({ error: `Sport not supported: ${sport}` });
+  const sport      = (req.params.sport || "").toLowerCase();
+  const provider   = ["espn", "odds-api"].includes(req.query.provider) ? req.query.provider : "espn";
+
+  if (!ESPN_ENDPOINTS[sport] && !ODDS_API_KEYS[sport]) {
+    return res.status(400).json({ error: `Unsupported sport: ${sport}` });
   }
-  const data = await fetchSport(sport);
+
+  const data = await providerFetch(sport, provider);
   if (!data) {
-    return res.status(502).json({ error: "Failed to fetch odds data" });
+    return res.status(502).json({ error: `Failed to fetch data from ${provider}` });
   }
+
   return res.json({
-    sport, provider: "odds-api",
-    leagues: [],
+    sport, provider,
+    leagues: data.leagues || [],
     events: data.events || [],
     fetchedAt: new Date().toISOString(),
   });
@@ -211,10 +278,13 @@ app.post("/chat", async (req, res) => {
 
   try {
     const intent = detectIntent(message);
-    const sportData = await fetchSport(intent);
-    console.log(`Intent: ${intent} | Odds API: ${sportData ? "OK" : "no data"}`);
+    const espnData = intent !== "tennis" && intent !== "boost"
+      ? await espnFetch(intent)
+      : null;
 
-    const prompt = buildLegacyPrompt(intent, sportData, message);
+    console.log(`Intent: ${intent} | ESPN: ${espnData ? "OK" : "no data"}`);
+
+    const prompt = buildLegacyPrompt(intent, espnData, message);
     const stream = await callClaude(prompt, history);
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -228,7 +298,7 @@ app.post("/chat", async (req, res) => {
     }
 
     await stream.finalMessage();
-    res.write(`data: ${JSON.stringify({ done: true, intent, live: !!sportData })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, intent, live: !!espnData })}\n\n`);
     res.end();
   } catch (err) {
     console.error("Chat error:", err.message);
@@ -850,7 +920,9 @@ app.post("/api/assistant/chat", async (req, res) => {
     activeLeague = "",
     selectedEventId = null,
     currentView = "league",
+    provider: reqDataProvider = "espn",
   } = req.body;
+  const dataProvider = ["espn", "odds-api"].includes(reqDataProvider) ? reqDataProvider : "espn";
   if (!userQuery?.trim()) {
     res.status(400).json({ error: "userQuery is required" });
     return;
@@ -898,7 +970,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   let resolvedSport  = activeSport;
 
   if (explicitSport && explicitSport !== activeSport) {
-    const fetched = await fetchSport(explicitSport);
+    const fetched = await providerFetch(explicitSport, dataProvider);
     if (fetched?.events?.length) {
       resolvedEvents = fetched.events.slice(0, 10).map(ev => {
         const comp = ev.competitions?.[0];
@@ -1102,6 +1174,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Betting assistant running at http://localhost:${PORT}`);
   console.log("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "loaded" : "MISSING");
-  console.log("ODDSAPI_API_KEY:", process.env.ODDSAPI_API_KEY ? "loaded" : "MISSING");
   console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "loaded" : "MISSING");
 });
