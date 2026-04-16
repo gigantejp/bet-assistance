@@ -496,7 +496,21 @@ document.querySelectorAll('.dbg-tab').forEach(t=>t.addEventListener('click',()=>
   document.querySelectorAll('.dbg-tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
   const tab=t.dataset.tab;
   DBG_TABS.forEach(id=>{const el=document.getElementById(`tab-${id}`);if(el)el.style.display=tab===id?'':'none';});
+  if(tab==='metrics')loadFeedbackStat();
 }));
+
+async function loadFeedbackStat(){
+  try{
+    const r=await fetch('/api/feedback');
+    if(!r.ok)return;
+    const d=await r.json();
+    const el=document.getElementById('fb-stat');
+    if(!el||!d.summary)return;
+    const s=d.summary;
+    const pct=s.total?Math.round(s.up/s.total*100):0;
+    el.textContent=`feedback: ${s.total} total · ${s.up}👍 ${s.down}👎 · ${pct}% positive`;
+  }catch{}
+}
 
 function updatePrompt(secs,ver){
   // Sections panel
