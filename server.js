@@ -31,18 +31,31 @@ const ODDS_API_KEYS = {
   mls:        "soccer_usa_mls",
   ucl:        "soccer_uefa_champs_league",
   uel:        "soccer_uefa_europa_league",
-  generic_soccer: "soccer_england_premier_league",
-  generic_basketball: "basketball_nba",
-  generic_football: "americanfootball_nfl",
-  generic_baseball: "baseball_mlb",
-  generic_hockey: "icehockey_nhl",
-  generic_tennis: "tennis_atp",
-  generic_golf: "golf_pga_championship",
-  generic_mma: "mma_mixed_martial_arts",
+  generic_soccer: "generic_soccer",
+  generic_basketball: "generic_basketball",
+  generic_football: "generic_football",
+  generic_baseball: "generic_baseball",
+  generic_hockey: "generic_hockey",
+  generic_tennis: "generic_tennis",
+  generic_golf: "generic_golf",
+  generic_mma: "generic_mma",
+};
+
+// Maps generic sport requests to their top leagues for content hierarchy
+const GENERIC_SPORT_EXPANSION = {
+  generic_soccer: ["soccer_england_premier_league", "soccer_spain_la_liga", "soccer_italy_serie_a", "soccer_usa_mls", "soccer_uefa_champs_league"],
+  generic_basketball: ["basketball_nba", "basketball_euroleague", "basketball_ncaab"],
+  generic_football: ["americanfootball_nfl", "americanfootball_ncaaf"],
+  generic_baseball: ["baseball_mlb"],
+  generic_hockey: ["icehockey_nhl"],
+  generic_tennis: ["tennis_atp", "tennis_wta"],
+  generic_golf: ["golf_pga_championship", "golf_masters_tournament"],
+  generic_mma: ["mma_mixed_martial_arts"],
 };
 
 async function oddsFetch(sportKey) {
-  const oddsKey = ODDS_API_KEYS[sportKey];
+  // Translate short keys (epl) to full keys, or use the key directly
+  const oddsKey = ODDS_API_KEYS[sportKey] || sportKey;
   const apiKey  = process.env.ODDSAPI_API_KEY;
   if (!oddsKey || !apiKey) return null;
   const url = `https://api.the-odds-api.com/v4/sports/${oddsKey}/odds?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
@@ -345,10 +358,10 @@ ${AVAILABLE_SPORTS}
 RULES:
 1. Block OFF_TOPIC and MANIPULATION (allowed:false). Allow all others.
 2. The user will provide their query and their "Active Sport" context.
-3. If the user explicitly asks for a sport or league that is fundamentally different from the Active Sport category, return the best matching Odds API key from the list above in the "explicit_sport_override" field.
-4. If the user does not specify a sport, or their requested sport matches the Active Sport category (e.g. asking for "soccer" while on an Argentina soccer page), set "explicit_sport_override" to null.
+3. If the user explicitly asks for a sport or league that is fundamentally different from the Active Sport category, return an array of the best matching Odds API keys from the list above in the "explicit_sport_overrides" field. You can include up to 3 keys if asking for a generic sport.
+4. If the user does not specify a sport, or their requested sport matches the Active Sport category (e.g. asking for "soccer" while on an Argentina soccer page), set "explicit_sport_overrides" to [].
 
-{"intent":"...","allowed":true,"block_reason":null,"context_needed":"...","response_type":"...","explicit_sport_override":null}`;
+{"intent":"...","allowed":true,"block_reason":null,"context_needed":"...","response_type":"...","explicit_sport_overrides":[]}`;
 
 async function runIntentGate(userQuery, activeSport, model) {
   const userMessage = `Active Sport: ${activeSport}\\nClassify: "${userQuery}"`;
@@ -916,16 +929,36 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   // ── LEAGUE_CONTEXT: server-fetch when user mentions a different sport ────
-  const explicitSport = gate.result.explicit_sport_override;
+  const explicitOverrides = gate.result.explicit_sport_overrides || [];
   let resolvedEvents = events;
   let resolvedSport  = activeSport;
+  let explicitSport  = explicitOverrides.length > 0 ? explicitOverrides[0] : null;
 
-  if (explicitSport && explicitSport !== activeSport) {
-    // If explicit_sport_override is a generic key (e.g. "generic_soccer"), map it to the actual Odds API key
-    const fetchKey = ODDS_API_KEYS[explicitSport] || explicitSport;
-    const fetched = await fetchSport(fetchKey);
-    if (fetched?.events?.length) {
-      resolvedEvents = fetched.events.slice(0, 10).map(ev => {
+  if (explicitOverrides.length > 0 && !explicitOverrides.includes(activeSport)) {
+    // Collect all leagues to fetch (expanding generic ones)
+    const leaguesToFetch = new Set();
+    for (const key of explicitOverrides) {
+      const fetchKey = ODDS_API_KEYS[key] || key;
+      if (GENERIC_SPORT_EXPANSION[fetchKey]) {
+        GENERIC_SPORT_EXPANSION[fetchKey].forEach(k => leaguesToFetch.add(k));
+      } else {
+        leaguesToFetch.add(fetchKey);
+      }
+    }
+
+    // Fetch odds for up to 3 leagues to avoid API quota drain and context limit
+    const targetLeagues = Array.from(leaguesToFetch).slice(0, 3);
+    const fetchPromises = targetLeagues.map(l => fetchSport(l));
+    const results = await Promise.all(fetchPromises);
+    
+    // Aggregate events across all fetched leagues
+    let aggregatedEvents = [];
+    results.forEach(res => {
+      if (res?.events?.length) aggregatedEvents = aggregatedEvents.concat(res.events);
+    });
+
+    if (aggregatedEvents.length > 0) {
+      resolvedEvents = aggregatedEvents.slice(0, 15).map(ev => {
         const comp = ev.competitions?.[0];
         return {
           id: ev.id, uid: ev.uid, date: ev.date,
@@ -942,7 +975,7 @@ app.post("/api/assistant/chat", async (req, res) => {
           }],
         };
       });
-      resolvedSport = explicitSport;
+      resolvedSport = targetLeagues[0]; // Set primary resolved sport
     }
   }
 
