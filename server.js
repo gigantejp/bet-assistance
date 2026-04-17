@@ -31,6 +31,7 @@ const ODDS_API_KEYS = {
   mls:        "soccer_usa_mls",
   ucl:        "soccer_uefa_champs_league",
   uel:        "soccer_uefa_europa_league",
+  generic_soccer: "soccer_england_premier_league", // fallback when user just says "soccer"
 };
 
 async function oddsFetch(sportKey) {
@@ -614,6 +615,7 @@ function detectExplicitSportMention(query = "") {
     ["mls", /\bmls\b|sounders|galaxy|red bulls/],
     ["ucl", /champions league|ucl/],
     ["uel", /europa league|uel/],
+    ["generic_soccer", /\bsoccer\b|\bfootball\b/],
     ["atp", /\batp\b|tennis|djokovic|federer|nadal|alcaraz/],
     ["wta", /\bwta\b|serena|swiatek|sabalenka/],
     ["pga", /\bpga\b|golf|masters|open|tiger woods|mcilroy/],
@@ -937,7 +939,10 @@ app.post("/api/assistant/chat", async (req, res) => {
   let resolvedEvents = events;
   let resolvedSport  = activeSport;
 
-  if (explicitSport && explicitSport !== activeSport) {
+  const isGenericMatch = 
+    (explicitSport === "generic_soccer" && activeSport.startsWith("soccer_"));
+
+  if (explicitSport && explicitSport !== activeSport && !isGenericMatch) {
     const fetched = await fetchSport(explicitSport);
     if (fetched?.events?.length) {
       resolvedEvents = fetched.events.slice(0, 10).map(ev => {
