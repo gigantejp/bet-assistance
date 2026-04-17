@@ -31,7 +31,14 @@ const ODDS_API_KEYS = {
   mls:        "soccer_usa_mls",
   ucl:        "soccer_uefa_champs_league",
   uel:        "soccer_uefa_europa_league",
-  generic_soccer: "soccer_england_premier_league", // fallback when user just says "soccer"
+  generic_soccer: "soccer_england_premier_league",
+  generic_basketball: "basketball_nba",
+  generic_football: "americanfootball_nfl",
+  generic_baseball: "baseball_mlb",
+  generic_hockey: "icehockey_nhl",
+  generic_tennis: "tennis_atp",
+  generic_golf: "golf_pga_championship",
+  generic_mma: "mma_mixed_martial_arts",
 };
 
 async function oddsFetch(sportKey) {
@@ -312,6 +319,8 @@ OUTPUT FORMAT
 // Two-stage architecture: Gate classifies + authorises, Analysis LLM responds.
 // The gate runs first; blocked queries never reach the analysis LLM.
 
+const AVAILABLE_SPORTS = Object.entries(ODDS_API_KEYS).map(([k, v]) => `- ${k} => ${v}`).join("\\n");
+
 const GATE_SYSTEM = `You are an intent classifier for a sports betting assistant.
 Return ONLY valid JSON — no other text.
 
@@ -330,12 +339,19 @@ MANIPULATION    = guaranteed wins, fixed matches, fraud
 CONTEXT_NEEDED: "event" | "league" | "all_events" | "none"
 RESPONSE_TYPE:  "bet_analysis" | "odds_comparison" | "game_list" | "explanation" | "navigation" | "static"
 
-Block OFF_TOPIC and MANIPULATION (allowed:false). Allow all others.
+AVAILABLE SPORT KEYS (for override):
+${AVAILABLE_SPORTS}
 
-{"intent":"...","allowed":true,"block_reason":null,"context_needed":"...","response_type":"..."}`;
+RULES:
+1. Block OFF_TOPIC and MANIPULATION (allowed:false). Allow all others.
+2. The user will provide their query and their "Active Sport" context.
+3. If the user explicitly asks for a sport or league that is fundamentally different from the Active Sport category, return the best matching Odds API key from the list above in the "explicit_sport_override" field.
+4. If the user does not specify a sport, or their requested sport matches the Active Sport category (e.g. asking for "soccer" while on an Argentina soccer page), set "explicit_sport_override" to null.
 
-async function runIntentGate(userQuery, model) {
-  const userMessage = `Classify: "${userQuery}"`;
+{"intent":"...","allowed":true,"block_reason":null,"context_needed":"...","response_type":"...","explicit_sport_override":null}`;
+
+async function runIntentGate(userQuery, activeSport, model) {
+  const userMessage = `Active Sport: ${activeSport}\\nClassify: "${userQuery}"`;
   const t0 = Date.now();
   try {
     const resp = await createModelResponse({
@@ -595,42 +611,7 @@ function classifyIntent(query = "") {
   return "ANALYZE_EVENT";
 }
 
-function detectExplicitSportMention(query = "") {
-  const q = (query || "").toLowerCase();
-  const patterns = [
-    ["nba", /\bnba\b|lakers|celtics|warriors|knicks|bulls|heat|nets|bucks/],
-    ["wnba", /\bwnba\b|fever|liberty|sparks|sky\b/],
-    ["ncaam", /ncaam|march madness|college basketball/],
-    ["nfl", /\bnfl\b|patriots|cowboys|eagles|chiefs|packers|49ers/],
-    ["ncaaf", /ncaaf|college football|cfb/],
-    ["mlb", /\bmlb\b|baseball|yankees|dodgers|mets|cubs|braves|red sox/],
-    ["nhl", /\bnhl\b|hockey|rangers|bruins|leafs|penguins|canadiens/],
-    ["ufc", /\bufc\b|mma|fight|octagon/],
-    ["bellator", /bellator/],
-    ["epl", /premier league|epl|arsenal|chelsea|liverpool|man city|man utd/],
-    ["laliga", /la liga|laliga|real madrid|barcelona|atletico/],
-    ["bundesliga", /bundesliga|bayern|dortmund/],
-    ["seriea", /serie a|juventus|inter milan|ac milan/],
-    ["ligue1", /ligue 1|psg|paris saint/],
-    ["mls", /\bmls\b|sounders|galaxy|red bulls/],
-    ["ucl", /champions league|ucl/],
-    ["uel", /europa league|uel/],
-    ["generic_soccer", /\bsoccer\b|\bfootball\b/],
-    ["atp", /\batp\b|tennis|djokovic|federer|nadal|alcaraz/],
-    ["wta", /\bwta\b|serena|swiatek|sabalenka/],
-    ["pga", /\bpga\b|golf|masters|open|tiger woods|mcilroy/],
-    ["lpga", /\blpga\b/],
-    ["liv", /\bliv\b golf/],
-    ["f1", /formula 1|\bf1\b|ferrari|mercedes|red bull racing|hamilton|verstappen/],
-    ["nascar", /nascar/],
-    ["indycar", /indycar|indy 500/],
-    ["ipl", /\bipl\b|cricket/],
-    ["pll", /\bpll\b|lacrosse/],
-    ["nll", /\bnll\b/],
-  ];
-  const match = patterns.find(([, pattern]) => pattern.test(q));
-  return match ? match[0] : null;
-}
+// detectExplicitSportMention has been removed - logic handled by Intent LLM
 
 function explainIntentDecision(query = "", intent = "ANALYZE_EVENT") {
   const q = query.toLowerCase();
@@ -675,7 +656,7 @@ function getEventStatusMeta(ev = {}) {
 function formatContext(events = [], intent = "ANALYZE_EVENT", activeContext = {}) {
   const lines = [];
   const activeLeague = activeContext.activeLeague || activeContext.activeSport || "";
-  const explicitSport = detectExplicitSportMention(activeContext.userQuery || "");
+  const explicitSport = activeContext.explicitSport || null;
   const eventPageActive = activeContext.currentView === "event";
   const hasSelectedEvent = !!activeContext.selectedEventId || eventPageActive;
   const eventScopedQuery = isEventScopedQuery(activeContext.userQuery || "");
@@ -917,7 +898,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   };
 
   // ── STAGE 1: Intent Gate ─────────────────────────────────────────────────
-  const gate = await runIntentGate(userQuery, intentModel);
+  const gate = await runIntentGate(userQuery, activeSport, intentModel);
   const intent = gate.result.intent;
 
   if (!gate.result.allowed) {
@@ -935,15 +916,14 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   // ── LEAGUE_CONTEXT: server-fetch when user mentions a different sport ────
-  const explicitSport = detectExplicitSportMention(userQuery);
+  const explicitSport = gate.result.explicit_sport_override;
   let resolvedEvents = events;
   let resolvedSport  = activeSport;
 
-  const isGenericMatch = 
-    (explicitSport === "generic_soccer" && activeSport.startsWith("soccer_"));
-
-  if (explicitSport && explicitSport !== activeSport && !isGenericMatch) {
-    const fetched = await fetchSport(explicitSport);
+  if (explicitSport && explicitSport !== activeSport) {
+    // If explicit_sport_override is a generic key (e.g. "generic_soccer"), map it to the actual Odds API key
+    const fetchKey = ODDS_API_KEYS[explicitSport] || explicitSport;
+    const fetched = await fetchSport(fetchKey);
     if (fetched?.events?.length) {
       resolvedEvents = fetched.events.slice(0, 10).map(ev => {
         const comp = ev.competitions?.[0];
@@ -967,7 +947,7 @@ app.post("/api/assistant/chat", async (req, res) => {
   }
 
   const formattedContext = formatContext(resolvedEvents, intent, {
-    activeSport: resolvedSport, activeLeague, selectedEventId, currentView, userQuery,
+    activeSport: resolvedSport, activeLeague, selectedEventId, currentView, userQuery, explicitSport
   });
   const { sections, version } = buildPromptPayload(userQuery, formattedContext, intent);
   const analysisDebug = { sections, version };
