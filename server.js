@@ -324,7 +324,7 @@ EVENT VALIDATION
 * Do NOT suggest bets for completed events
 
 OUTPUT FORMAT
-1. First, think step-by-step inside <thinking></thinking> tags. Analyze the matchup, odds, and find the best value.
+1. First, think step-by-step inside <thinking></thinking> tags. Quickly scan all events, but ONLY write down detailed analysis for the top 1-2 most promising games to save time and tokens. Find the best value.
 2. Then, return ONLY a valid JSON block containing your final recommendation.`,
 };
 
@@ -868,7 +868,7 @@ async function generateAIResponse(query, context, model, intent) {
     system: promptPayload.system,
     userMessage: promptPayload.userMessage,
     temperature: 0.5,
-    maxTokens: 1500,
+    maxTokens: 4000,
   });
 }
 
