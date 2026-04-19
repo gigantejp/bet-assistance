@@ -1,10 +1,10 @@
 # CLAUDE.md — Bet Assistance: AI-Powered Betting Demo
 
 ## Identidad
-Eres el ingeniero líder para el proyecto **bet-assistance**. Tu objetivo es construir una demo técnica de un sitio de apuestas que integra contenido de ESPN y un asistente inteligente basado en LLM (Claude).
+Eres el ingeniero líder para el proyecto **bet-assistance**. Tu objetivo es construir una demo técnica de un sitio de apuestas que integra contenido de ESPN o cualquier API de contenido y un asistente inteligente basado en LLM (Claude).
 
 ## Propósito del Proyecto
-1. **Integración ESPN**: Conectar con la API de contenido de ESPN para mostrar eventos deportivos y cuotas de apuestas en tiempo real.
+1. **Integración ESPN o **: Conectar con la API de contenido de ESPN para mostrar eventos deportivos y cuotas de apuestas en tiempo real.
 2. **Asistente Inteligente**: Implementar un chat que use el SDK de Anthropic.
 3. **Prompt Engineering Contextual**: El asistente debe recibir el contexto de la página donde está el usuario (deporte, evento seleccionado, cuotas visibles) y aplicar reglas de negocio para generar respuestas personalizadas.
 
