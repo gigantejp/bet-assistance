@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Casino Lobby — Demo</title>
+<link rel="stylesheet" href="casino.css">
+</head>
+<body>
+
+<header class="cs-header">
+  <a class="cs-logo" href="/index.html">⚡ SportsBetting</a>
+  <span class="cs-sep">/</span>
+  <span class="cs-logo cs-logo-casino">🎰 Casino</span>
+  <span class="badge">Demo</span>
+  <span class="cs-spacer"></span>
+  <span class="cs-credits" title="Créditos de demostración">
+    <span class="cs-chip">🪙</span>
+    <span id="cs-balance">1,000</span>
+  </span>
+</header>
+
+<div class="cs-toolbar">
+  <input id="cs-search" class="cs-search" type="text" placeholder="Buscar juego…" autocomplete="off">
+  <select id="cs-provider" class="cs-select"></select>
+  <div class="cs-cats" id="cs-cats">
+    <button class="cs-cat active" data-cat="all">Todos</button>
+    <button class="cs-cat" data-cat="slot">Tragamonedas</button>
+    <button class="cs-cat" data-cat="keno">Keno</button>
+  </div>
+  <span class="cs-count" id="cs-count"></span>
+</div>
+
+<main class="cs-lobby" id="cs-lobby">
+  <div class="cs-state">Cargando catálogo…</div>
+</main>
+
+<footer class="cs-footer">
+  Catálogo de nombres inspirado en el listado público de
+  <a href="https://github.com/slotopol/server" target="_blank" rel="noopener">slotopol/server</a>.
+  Este mini-site no usa gráficos ni código de ese proyecto: cada juego se lanza con un motor de tragamonedas
+  genérico propio, en modo demo con créditos ficticios.
+</footer>
+
+<div class="cs-modal" id="cs-modal" hidden>
+  <div class="cs-modal-backdrop" id="cs-modal-backdrop"></div>
+  <div class="cs-modal-panel">
+    <div class="cs-modal-head">
+      <div class="cs-modal-title">
+        <span id="cs-modal-icon" class="cs-modal-icon">🎰</span>
+        <div>
+          <div id="cs-modal-name" class="cs-modal-name">—</div>
+          <div id="cs-modal-provider" class="cs-modal-provider">—</div>
+        </div>
+      </div>
+      <button class="cs-modal-close" id="cs-modal-close" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="cs-modal-body" id="cs-modal-body"></div>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script src="casino.js"></script>
+</body>
+</html>

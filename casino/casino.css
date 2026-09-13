@@ -1,0 +1,161 @@
+:root{
+  --bg:#07111c;--panel:#0d1e2e;--card:#112235;--line:#1a3348;
+  --text:#dceaf5;--muted:#6a94b0;--accent:#3b9eff;--green:#00d4aa;
+  --warn:#ffa726;--red:#ff5252;--purple:#bb86fc;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;
+}
+
+/* ── Header ───────────────────────────────────────────── */
+.cs-header{
+  background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;height:52px;
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.cs-logo{font-size:1.02rem;font-weight:800;color:var(--accent);text-decoration:none}
+.cs-logo-casino{color:var(--purple)}
+.cs-sep{color:var(--muted)}
+.badge{font-size:.68rem;background:#2a1a40;border:1px solid #4a2a70;color:var(--purple);padding:2px 8px;border-radius:999px}
+.cs-spacer{flex:1}
+.cs-credits{display:flex;align-items:center;gap:6px;font-size:.85rem;font-weight:700;color:var(--warn);
+  border:1px solid var(--line);padding:5px 12px;border-radius:8px;background:var(--panel)}
+.cs-chip{font-size:.95rem}
+
+/* ── Toolbar ──────────────────────────────────────────── */
+.cs-toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 20px;
+  border-bottom:1px solid var(--line);background:#081420;
+}
+.cs-search{
+  flex:1;min-width:180px;max-width:320px;background:var(--card);border:1px solid var(--line);
+  color:var(--text);padding:8px 12px;border-radius:8px;font-size:.85rem;outline:none;
+}
+.cs-search:focus{border-color:var(--accent)}
+.cs-select{
+  background:var(--card);border:1px solid var(--line);color:var(--text);padding:8px 10px;
+  border-radius:8px;font-size:.82rem;outline:none;
+}
+.cs-cats{display:flex;gap:6px}
+.cs-cat{
+  background:transparent;border:1px solid var(--line);color:var(--muted);padding:7px 14px;
+  border-radius:999px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.cs-cat:hover{color:var(--text);border-color:var(--accent)}
+.cs-cat.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cs-count{margin-left:auto;font-size:.75rem;color:var(--muted)}
+
+/* ── Lobby grid ───────────────────────────────────────── */
+.cs-lobby{
+  flex:1;padding:18px 20px 40px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px;
+  align-content:start;
+}
+.cs-state{grid-column:1/-1;text-align:center;color:var(--muted);padding:40px 0;font-size:.9rem}
+
+.cs-card{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;
+}
+.cs-card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.cs-thumb{
+  height:104px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;
+  position:relative;
+}
+.cs-thumb-cat{
+  position:absolute;top:6px;left:6px;font-size:.6rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.05em;background:rgba(0,0,0,.35);color:#fff;padding:2px 7px;border-radius:999px;
+}
+.cs-thumb-rtp{
+  position:absolute;bottom:6px;right:6px;font-size:.62rem;font-weight:700;
+  background:rgba(0,0,0,.4);color:#fff;padding:2px 6px;border-radius:6px;
+}
+.cs-body{padding:10px 11px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.cs-name{font-size:.82rem;font-weight:700;line-height:1.25;color:var(--text)}
+.cs-provider{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.cs-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.cs-tag{font-size:.62rem;color:var(--muted);background:var(--panel);border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+.cs-play{
+  margin-top:8px;background:var(--accent);color:#fff;border:none;padding:7px 0;border-radius:7px;
+  font-size:.78rem;font-weight:700;cursor:pointer;
+}
+.cs-play:hover{filter:brightness(1.1)}
+
+/* ── Footer ───────────────────────────────────────────── */
+.cs-footer{
+  padding:14px 20px 24px;font-size:.72rem;color:var(--muted);text-align:center;border-top:1px solid var(--line);
+}
+.cs-footer a{color:var(--accent)}
+
+/* ── Modal / Game player ──────────────────────────────── */
+.cs-modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+.cs-modal[hidden]{display:none}
+.cs-modal-backdrop{position:absolute;inset:0;background:rgba(3,7,12,.72)}
+.cs-modal-panel{
+  position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  width:min(480px,100%);max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.cs-modal-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.cs-modal-icon{font-size:1.8rem}
+.cs-modal-name{font-weight:800;font-size:.95rem}
+.cs-modal-provider{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.cs-modal-close{
+  margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);
+  width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:.85rem;
+}
+.cs-modal-close:hover{color:var(--red);border-color:var(--red)}
+.cs-modal-body{padding:16px}
+
+/* ── Slot engine UI ───────────────────────────────────── */
+.slot-reels{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:#03080e;border:1px solid var(--line);
+  border-radius:10px;padding:8px;margin-bottom:12px;
+}
+.slot-reel{display:flex;flex-direction:column;gap:4px}
+.slot-cell{
+  height:52px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;background:var(--card);
+  border-radius:6px;transition:transform .15s;
+}
+.slot-cell.spin{animation:slot-blur .08s linear infinite}
+.slot-cell.win{background:#123a2a;box-shadow:0 0 0 2px var(--green) inset}
+@keyframes slot-blur{0%{filter:blur(0)}50%{filter:blur(2px)}100%{filter:blur(0)}}
+
+.keno-board{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;margin-bottom:12px}
+.keno-num{
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;
+  background:var(--card);border:1px solid var(--line);border-radius:6px;cursor:pointer;color:var(--muted);
+}
+.keno-num.picked{background:var(--accent);color:#fff;border-color:var(--accent)}
+.keno-num.hit{background:var(--green);color:#04241a;border-color:var(--green)}
+.keno-num.miss-picked{background:#4a1f1f;color:#ffb3b3;border-color:var(--red)}
+
+.game-hud{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.game-stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.72rem;color:var(--muted)}
+.game-stat b{color:var(--text);font-size:.82rem;display:block}
+.game-bet-row{display:flex;align-items:center;gap:8px;margin-left:auto}
+.game-bet-btn{
+  width:26px;height:26px;border-radius:7px;background:var(--card);border:1px solid var(--line);
+  color:var(--text);cursor:pointer;font-size:.9rem;
+}
+.game-bet-btn:hover{border-color:var(--accent)}
+.game-result{
+  min-height:30px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;
+  margin-bottom:10px;border-radius:8px;padding:6px;
+}
+.game-result.win{background:#0e3a2b;color:var(--green)}
+.game-result.lose{background:#1a1420;color:var(--muted)}
+.game-actions{display:flex;gap:8px}
+.game-spin-btn{
+  flex:1;background:var(--accent);color:#fff;border:none;padding:12px 0;border-radius:9px;font-size:.9rem;
+  font-weight:800;cursor:pointer;letter-spacing:.02em;
+}
+.game-spin-btn:disabled{opacity:.5;cursor:default}
+.game-spin-btn:hover:not(:disabled){filter:brightness(1.1)}
+.game-note{margin-top:10px;font-size:.66rem;color:var(--muted);text-align:center;line-height:1.5}
+
+@media(max-width:640px){
+  .cs-toolbar{gap:8px}
+  .cs-search{max-width:none}
+  .cs-lobby{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+}
