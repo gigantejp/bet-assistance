@@ -1,2 +1,7 @@
 node_modules/
 .env
+
+# slotopol runtime state (created on first run, not part of the source)
+casino-server/appdata/*.sqlite
+casino-server/appdata/device-secrets.json
+casino-server/bin/sqlite/
