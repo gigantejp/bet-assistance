@@ -147,6 +147,93 @@ const GP_TAGS = [
   ["wild", (1 << 24) | (1 << 25) | (1 << 26) | (1 << 27) | (1 << 28)],
 ];
 
+// Purely cosmetic, original theming (no upstream art exists to reuse) —
+// picks a coherent icon set + card gradient from keywords in the game name,
+// so "Fire King" reads as fire/treasure instead of a random emoji grab-bag.
+const THEMES = [
+  {
+    key: "egypt",
+    match: /pharaoh|ra deluxe|\bra\b|ramesses|ankh|egypt|cleopatra|astarta|sphinx/i,
+    icon: "🏺",
+    gradient: ["#caa244", "#4a2f0a"],
+    symbols: ["🏺", "🐫", "👑", "☀️", "🔺", "🦂", "🐍", "💰"],
+  },
+  {
+    key: "fruit",
+    match: /fruit|cherry|cherries|banana|apple|melon|citrus|juicy|sugar/i,
+    icon: "🍒",
+    gradient: ["#e0455e", "#5a0f26"],
+    symbols: ["🍒", "🍋", "🍇", "🍉", "🍊", "🍓", "🍎", "7️⃣"],
+  },
+  {
+    key: "gem",
+    match: /gem|jewel|diamond|sapphire|emerald|ruby|rubies|crown jewel/i,
+    icon: "💎",
+    gradient: ["#3fb0e0", "#0b2f52"],
+    symbols: ["💎", "💍", "🔷", "🔶", "⭐", "✨", "🔹", "👑"],
+  },
+  {
+    key: "treasure",
+    match: /gold|treasure|fortune|royal|prophec|dynasty|money|lucky|crown/i,
+    icon: "🪙",
+    gradient: ["#f0c24b", "#5a3f04"],
+    symbols: ["🪙", "💰", "👑", "🏆", "💵", "🗝️", "📦", "💎"],
+  },
+  {
+    key: "beast",
+    match: /dolphin|beetle|wolf|dragon|kraken|whale|rooster|fox|bigfoot|panda|penguin|rex|dogs|birds|snake|tiger|lion/i,
+    icon: "🐉",
+    gradient: ["#3fae6a", "#0a3a20"],
+    symbols: ["🐉", "🐺", "🦅", "🐍", "🦂", "🐬", "🦁", "🐸"],
+  },
+  {
+    key: "mythic",
+    match: /god|asgard|valkyrie|zeus|excalibur|guardian|nymph|goblin|fairy|wizard|magic|witches|voodoo|spell/i,
+    icon: "🔮",
+    gradient: ["#9a5fe0", "#2a1050"],
+    symbols: ["🔮", "🧙", "⚡", "🌙", "👹", "🦄", "🗡️", "⭐"],
+  },
+  {
+    key: "fire",
+    match: /fire|hot|flame|burning|inferno|chilli|dozen|storm/i,
+    icon: "🔥",
+    gradient: ["#ff7a3d", "#5a1200"],
+    symbols: ["🔥", "🌋", "💥", "☄️", "🧨", "🌶️", "⚡", "👑"],
+  },
+  {
+    key: "ice",
+    match: /ice|cold|frost|polar|winter|christmas|santa|snow/i,
+    icon: "❄️",
+    gradient: ["#5fd0e0", "#08313d"],
+    symbols: ["❄️", "🧊", "⛄", "🌨️", "💎", "🔵", "⭐", "🥶"],
+  },
+  {
+    key: "space",
+    match: /galaxy|space|star|astro|bitcoin|tesla|infinity/i,
+    icon: "✨",
+    gradient: ["#5a6bd8", "#0d1040"],
+    symbols: ["✨", "🌟", "💫", "🪐", "🚀", "🌌", "⭐", "☄️"],
+  },
+  {
+    key: "classic",
+    match: /classic|7's|seven|joker|cabaret|clover|hyper|cuber|shining/i,
+    icon: "🍀",
+    gradient: ["#3fae6a", "#0d2a16"],
+    symbols: ["🍀", "7️⃣", "🔔", "🍒", "⭐", "💎", "👑", "🎰"],
+  },
+];
+const DEFAULT_THEME = {
+  key: "default",
+  icon: "🎰",
+  gradient: ["#3a4a6b", "#10182c"],
+  symbols: ["🍒", "🍋", "🍇", "🔔", "⭐", "💎", "7️⃣", "👑"],
+};
+
+function pickTheme(name) {
+  for (const t of THEMES) if (t.match.test(name)) return t;
+  return DEFAULT_THEME;
+}
+
 function slugify(s) {
   return s
     .toLowerCase()
@@ -167,6 +254,7 @@ async function buildCatalog() {
     const tags = GP_TAGS.filter(([, mask]) => (alg.gp || 0) & mask).map(([name]) => name);
     if (alg.bn) tags.push("bonus_game");
     for (const alias of alg.aliases || []) {
+      const theme = pickTheme(alias.name);
       games.push({
         id: slugify(`${alias.prov}-${alias.name}`),
         alias: `${alias.prov} / ${alias.name}`,
@@ -181,6 +269,7 @@ async function buildCatalog() {
         rtpTarget: closestRtp(alg.rtp, 95),
         rtpRange: alg.rtp && alg.rtp.length ? [Math.min(...alg.rtp), Math.max(...alg.rtp)] : null,
         tags,
+        theme: { icon: theme.icon, gradient: theme.gradient, symbols: theme.symbols },
       });
     }
   }
