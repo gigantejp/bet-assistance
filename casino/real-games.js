@@ -52,24 +52,33 @@
       : `<div class="cs-state">No se encontraron juegos con esos filtros.</div>`;
   }
 
-  function openGame(id) {
+  async function openGame(id) {
     const game = allGames.find((g) => g.id === id);
-    if (!game || !game.embedUrl) return;
+    if (!game) return;
     modalIcon.textContent = "🎮";
     modalIcon.style.cssText = "background:linear-gradient(135deg,#3a4a6b,#10182c);";
     modalName.textContent = game.name;
     modalProvider.textContent = `${game.provider} · Juego real (SlotsLaunch)`;
-    modalBody.innerHTML = `
-      <iframe
-        src="${game.embedUrl}"
-        style="width:100%;aspect-ratio:16/10;border:0;border-radius:10px;background:#000"
-        allow="autoplay; fullscreen"
-        loading="lazy"
-      ></iframe>
-      <div class="game-note">Juego real en modo demo (sin dinero real), servido por SlotsLaunch.</div>
-    `;
+    modalBody.innerHTML = `<div class="cs-state">Generando link seguro…</div>`;
     modal.hidden = false;
     document.body.style.overflow = "hidden";
+
+    try {
+      const res = await fetch(`/api/casino/real/embed/${encodeURIComponent(game.gameId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "no se pudo generar el link");
+      modalBody.innerHTML = `
+        <iframe
+          src="${data.url}"
+          style="width:100%;aspect-ratio:16/10;border:0;border-radius:10px;background:#000"
+          allow="autoplay; fullscreen"
+          loading="lazy"
+        ></iframe>
+        <div class="game-note">Juego real en modo demo (sin dinero real), servido por SlotsLaunch.</div>
+      `;
+    } catch (err) {
+      modalBody.innerHTML = `<div class="cs-state">No se pudo cargar el juego: ${err.message}</div>`;
+    }
   }
 
   lobbyEl.addEventListener("click", (e) => {
