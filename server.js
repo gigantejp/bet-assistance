@@ -286,7 +286,7 @@ app.post("/api/casino/collect", async (req, res) => {
 // ── CASINO — real branded games via SlotsLaunch (free-play iframe embeds) ──
 app.get("/api/casino/real/debug", async (_req, res) => {
   if (!slotsLaunch.isConfigured()) {
-    return res.status(503).json({ error: "SLOTSLAUNCH_API_TOKEN is not configured" });
+    return res.status(503).json({ error: "SlotsLaunch credentials are not fully configured (need SLOTSLAUNCH_API_TOKEN, SLOTSLAUNCH_API_SECRET, and SLOTSLAUNCH_ORIGIN)" });
   }
   try {
     res.json(await slotsLaunch.debugSample());
@@ -297,7 +297,7 @@ app.get("/api/casino/real/debug", async (_req, res) => {
 
 app.get("/api/casino/real/catalog", async (_req, res) => {
   if (!slotsLaunch.isConfigured()) {
-    return res.status(503).json({ error: "SLOTSLAUNCH_API_TOKEN is not configured" });
+    return res.status(503).json({ error: "SlotsLaunch credentials are not fully configured (need SLOTSLAUNCH_API_TOKEN, SLOTSLAUNCH_API_SECRET, and SLOTSLAUNCH_ORIGIN)" });
   }
   try {
     res.json({ games: await slotsLaunch.getCatalog() });

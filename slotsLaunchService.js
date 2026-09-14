@@ -4,10 +4,16 @@
 const fetch = require("node-fetch");
 const crypto = require("crypto");
 
-const API_KEY = process.env.SLOTSLAUNCH_API_TOKEN;
-const API_SECRET = process.env.SLOTSLAUNCH_API_SECRET;
-// "site_domain"/Origin per their spec: bare host, no scheme, no www.
-const SITE_DOMAIN = (process.env.SLOTSLAUNCH_ORIGIN || "bet-assistance.onrender.com").replace(/^www\./, "");
+// .trim() defends against a stray trailing newline/space from pasting into
+// a dashboard textarea — that alone silently breaks every HMAC signature.
+const API_KEY = (process.env.SLOTSLAUNCH_API_TOKEN || "").trim();
+const API_SECRET = (process.env.SLOTSLAUNCH_API_SECRET || "").trim();
+// "site_domain"/Origin per their spec: bare host, no scheme, no www., no trailing slash.
+const SITE_DOMAIN = (process.env.SLOTSLAUNCH_ORIGIN || "bet-assistance.onrender.com")
+  .trim()
+  .replace(/^https?:\/\//, "")
+  .replace(/^www\./, "")
+  .replace(/\/+$/, "");
 const BASE_URL = "https://slotslaunch.com";
 const MAX_PAGES = 40; // ~40 * 50 = 2000 games, well above what we need
 
@@ -79,7 +85,14 @@ async function fetchGamesPage(page) {
   const url =
     `${BASE_URL}${path}?page=${page}&per_page=50&order_by=updated_at&order=desc&published=1` +
     `&token=${encodeURIComponent(API_KEY)}`;
-  const res = await fetch(url, { headers: apiHeaders("GET", path) });
+  const reqHeaders = apiHeaders("GET", path);
+  if (page === 1) {
+    console.log(
+      `[slotslaunch] signing request: origin="${reqHeaders.Origin}", ts=${reqHeaders["X-SL-Timestamp"]}, ` +
+        `keyLen=${API_KEY.length}, secretLen=${API_SECRET.length}, sig=${reqHeaders["X-SL-Signature"].slice(0, 12)}…`
+    );
+  }
+  const res = await fetch(url, { headers: reqHeaders });
   const text = await res.text();
   let data;
   try {
