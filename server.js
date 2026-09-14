@@ -306,6 +306,19 @@ app.get("/api/casino/real/catalog", async (_req, res) => {
   }
 });
 
+// Signed iframe URLs are generated fresh per launch (short-lived, per
+// SlotsLaunch's spec) — never cached or reused across sessions.
+app.get("/api/casino/real/embed/:gameId", (req, res) => {
+  if (!slotsLaunch.isConfigured()) {
+    return res.status(503).json({ error: "SlotsLaunch credentials are not configured" });
+  }
+  try {
+    res.json({ url: slotsLaunch.getEmbedUrl(req.params.gameId) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/scoreboard/:sport", async (req, res) => {
   const sport = (req.params.sport || "").toLowerCase();
   if (!ODDS_API_KEYS[sport]) {
@@ -1267,4 +1280,5 @@ app.listen(PORT, () => {
   console.log("ODDSAPI_API_KEY:", process.env.ODDSAPI_API_KEY ? "loaded" : "MISSING");
   console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "loaded" : "MISSING");
   console.log("SLOTSLAUNCH_API_TOKEN:", process.env.SLOTSLAUNCH_API_TOKEN ? "loaded" : "MISSING");
+  console.log("SLOTSLAUNCH_API_SECRET:", process.env.SLOTSLAUNCH_API_SECRET ? "loaded" : "MISSING");
 });
