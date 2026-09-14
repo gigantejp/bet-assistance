@@ -4,7 +4,26 @@ const fetch = require("node-fetch");
 const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 const casino = require("./casinoService");
+
+const BUILD_VERSION = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, "VERSION"), "utf8").trim();
+  } catch {
+    return "0";
+  }
+})();
+const BUILD_COMMIT =
+  process.env.RENDER_GIT_COMMIT ||
+  (() => {
+    try {
+      return execSync("git rev-parse --short HEAD", { cwd: __dirname }).toString().trim();
+    } catch {
+      return "unknown";
+    }
+  })();
+const BUILD_STARTED_AT = new Date().toISOString();
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -202,6 +221,14 @@ User question: "${userQuery}"`;
 
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+app.get("/api/version", (_req, res) => {
+  res.json({
+    version: BUILD_VERSION,
+    commit: BUILD_COMMIT.length > 7 ? BUILD_COMMIT.slice(0, 7) : BUILD_COMMIT,
+    startedAt: BUILD_STARTED_AT,
+  });
+});
 
 // ── CASINO (real slotopol/server engine, vendored under casino-server/) ────
 casino.start().catch((err) => console.error("[casino] failed to start:", err.message));

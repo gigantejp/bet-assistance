@@ -13,12 +13,19 @@
   <span class="cs-sep">/</span>
   <span class="cs-logo cs-logo-casino">🎰 Casino</span>
   <span class="badge">Demo</span>
+  <span class="badge" id="build-wrap" title="Build desplegado"></span>
   <span class="cs-spacer"></span>
   <span class="cs-credits" title="Créditos de demostración">
     <span class="cs-chip">🪙</span>
     <span id="cs-balance">1,000</span>
   </span>
 </header>
+<script>
+fetch("/api/version").then(r=>r.json()).then(d=>{
+  const el = document.getElementById("build-wrap");
+  if (el) el.textContent = `v${d.version} · ${d.commit}`;
+}).catch(()=>{});
+</script>
 
 <div class="cs-toolbar">
   <input id="cs-search" class="cs-search" type="text" placeholder="Buscar juego…" autocomplete="off">
