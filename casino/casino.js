@@ -1,27 +1,29 @@
 (function () {
-  const BALANCE_KEY = "casino-demo-balance";
-  const START_BALANCE = 1000;
+  const DEVICE_KEY = "casino-device-id";
 
-  const wallet = {
-    get() {
-      const v = Number(localStorage.getItem(BALANCE_KEY));
-      return Number.isFinite(v) && v > 0 ? v : START_BALANCE;
-    },
-    add(delta) {
-      const next = Math.max(0, this.get() + delta);
-      localStorage.setItem(BALANCE_KEY, String(next));
-      renderBalance();
-      return next;
-    },
-    reset() {
-      localStorage.setItem(BALANCE_KEY, String(START_BALANCE));
-      renderBalance();
-    },
-  };
+  function deviceId() {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/-/g, "");
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  }
 
-  function renderBalance() {
+  async function api(path, body) {
+    const res = await fetch(`/api/casino/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: deviceId(), ...body }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `${path} failed`);
+    return data;
+  }
+
+  function renderBalance(wallet) {
     const el = document.getElementById("cs-balance");
-    if (el) el.textContent = wallet.get().toLocaleString("es-ES");
+    if (el && typeof wallet === "number") el.textContent = Math.round(wallet).toLocaleString("es-ES");
   }
 
   const lobbyEl = document.getElementById("cs-lobby");
@@ -35,28 +37,37 @@
   const modalName = document.getElementById("cs-modal-name");
   const modalProvider = document.getElementById("cs-modal-provider");
 
+  const TAG_LABELS = {
+    jackpot: "Jackpot",
+    bonus_mode: "Bonus",
+    bonus_game: "Bonus",
+    cascade: "Cascada",
+    free_spins: "Free Spins",
+    scatter: "Scatter",
+    wild: "Wild",
+  };
+
   let allGames = [];
   let activeCat = "all";
 
-  function gradientStyle(g) {
-    const [a, b] = g.gradient || ["#333", "#111"];
-    return `background:linear-gradient(135deg, ${a}, ${b});`;
-  }
-
   function cardHTML(g) {
+    const dims = g.category === "keno" ? "80 números" : `${g.reels}x${g.rows}`;
+    const betUnit = g.category === "keno" ? null : g.ways ? `${g.ways} formas` : g.lines ? `${g.lines} líneas` : null;
+    const tags = (g.tags || []).slice(0, 2).map((t) => TAG_LABELS[t] || t);
     return `
       <div class="cs-card" data-id="${g.id}">
-        <div class="cs-thumb" style="${gradientStyle(g)}">
+        <div class="cs-thumb">
           <span class="cs-thumb-cat">${g.category === "keno" ? "Keno" : "Slot"}</span>
-          <span>${g.icon}</span>
-          <span class="cs-thumb-rtp">${g.rtp}% RTP</span>
+          <span>${g.category === "keno" ? "🎱" : "🎰"}</span>
+          ${g.rtpTarget ? `<span class="cs-thumb-rtp">${g.rtpTarget.toFixed(1)}% RTP</span>` : ""}
         </div>
         <div class="cs-body">
           <div class="cs-name">${g.name}</div>
           <div class="cs-provider">${g.provider}</div>
           <div class="cs-meta">
-            ${g.lines ? `<span class="cs-tag">${g.lines} líneas</span>` : ""}
-            <span class="cs-tag">${g.volatility}</span>
+            <span class="cs-tag">${dims}</span>
+            ${betUnit ? `<span class="cs-tag">${betUnit}</span>` : ""}
+            ${tags.map((t) => `<span class="cs-tag">${t}</span>`).join("")}
           </div>
           <button class="cs-play" data-id="${g.id}">Jugar</button>
         </div>
@@ -79,16 +90,23 @@
       : `<div class="cs-state">No se encontraron juegos con esos filtros.</div>`;
   }
 
-  function openGame(id) {
+  async function openGame(id) {
     const game = allGames.find((g) => g.id === id);
     if (!game) return;
-    modalIcon.textContent = game.icon;
-    modalIcon.parentElement.style.background = "none";
+    modalIcon.textContent = game.category === "keno" ? "🎱" : "🎰";
     modalName.textContent = game.name;
     modalProvider.textContent = `${game.provider} · ${game.category === "keno" ? "Keno" : "Tragamonedas"}`;
     modal.hidden = false;
     document.body.style.overflow = "hidden";
-    window.CasinoEngine.mountGame(modalBody, game, wallet);
+    modalBody.innerHTML = `<div class="cs-state">Conectando con el motor real…</div>`;
+
+    try {
+      const { gid, game: state, wallet } = await api("new-game", { alias: game.alias });
+      renderBalance(wallet);
+      window.CasinoEngine.mount(modalBody, game, gid, state, wallet, { api, renderBalance });
+    } catch (err) {
+      modalBody.innerHTML = `<div class="cs-state">No se pudo iniciar el juego: ${err.message}</div>`;
+    }
   }
 
   function closeModal() {
@@ -120,18 +138,20 @@
   });
 
   async function init() {
-    renderBalance();
     try {
-      const res = await fetch("games.json");
+      const res = await fetch("/api/casino/catalog");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "catalog failed");
       allGames = data.games;
+      const providers = [...new Set(allGames.map((g) => g.provider))].sort();
       providerEl.innerHTML =
         `<option value="all">Todos los proveedores</option>` +
-        data.providers.map((p) => `<option value="${p}">${p}</option>`).join("");
+        providers.map((p) => `<option value="${p}">${p}</option>`).join("");
       applyFilters();
     } catch (err) {
-      lobbyEl.innerHTML = `<div class="cs-state">No se pudo cargar el catálogo de juegos.</div>`;
-      console.error("Error cargando games.json", err);
+      lobbyEl.innerHTML = `<div class="cs-state">No se pudo cargar el catálogo (¿el motor slotopol sigue iniciando?). ${err.message}</div>`;
+      console.error("Error cargando catálogo", err);
+      setTimeout(init, 3000);
     }
   }
 

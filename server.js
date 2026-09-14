@@ -4,6 +4,7 @@ const fetch = require("node-fetch");
 const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
+const casino = require("./casinoService");
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -201,6 +202,58 @@ User question: "${userQuery}"`;
 
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+// ── CASINO (real slotopol/server engine, vendored under casino-server/) ────
+casino.start().catch((err) => console.error("[casino] failed to start:", err.message));
+
+app.get("/api/casino/catalog", async (_req, res) => {
+  try {
+    res.json({ games: await casino.getCatalog() });
+  } catch (err) {
+    res.status(503).json({ error: err.message });
+  }
+});
+
+app.post("/api/casino/new-game", async (req, res) => {
+  try {
+    const { deviceId, alias } = req.body;
+    if (!deviceId || !alias) return res.status(400).json({ error: "deviceId and alias are required" });
+    res.json(await casino.newGame(deviceId, alias));
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+app.post("/api/casino/spin", async (req, res) => {
+  try {
+    const { deviceId, gid, bet, sel } = req.body;
+    if (!deviceId || !gid) return res.status(400).json({ error: "deviceId and gid are required" });
+    res.json(await casino.spin(deviceId, gid, bet, sel));
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+app.post("/api/casino/keno-spin", async (req, res) => {
+  try {
+    const { deviceId, gid, bet, sel } = req.body;
+    if (!deviceId || !gid) return res.status(400).json({ error: "deviceId and gid are required" });
+    res.json(await casino.kenoSpin(deviceId, gid, bet, sel));
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+app.post("/api/casino/collect", async (req, res) => {
+  try {
+    const { deviceId, gid } = req.body;
+    if (!deviceId || !gid) return res.status(400).json({ error: "deviceId and gid are required" });
+    await casino.collect(deviceId, gid);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.message });
+  }
+});
 
 app.get("/api/scoreboard/:sport", async (req, res) => {
   const sport = (req.params.sport || "").toLowerCase();
