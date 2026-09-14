@@ -186,11 +186,18 @@ header{background:#060f1a;border-bottom:1px solid var(--line);padding:0 20px;hei
     <span id="srv-dot"></span>
     <span id="srv-lbl">Checking…</span>
   </span>
+  <span class="srv-wrap" id="build-wrap" title="Build desplegado"></span>
   <span class="h-spacer"></span>
   <a class="h-btn" href="/casino/" style="text-decoration:none;display:inline-flex;align-items:center">🎰 Casino</a>
   <button class="h-btn">Log In</button>
   <button class="h-btn primary">Sign Up</button>
 </header>
+<script>
+fetch("/api/version").then(r=>r.json()).then(d=>{
+  const el = document.getElementById("build-wrap");
+  if (el) el.textContent = `v${d.version} · ${d.commit}`;
+}).catch(()=>{});
+</script>
 
 <nav class="sport-tabs" id="sport-tabs"></nav>
 <nav class="sport-tabs" id="league-tabs" style="background: #08111e; border-top: 1px solid var(--line); display: none;"></nav>
