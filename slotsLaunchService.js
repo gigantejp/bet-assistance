@@ -73,8 +73,11 @@ async function buildCatalog() {
   do {
     const data = await fetchPage(page);
     const items = data.data || data.games || [];
-    if (page === 1 && items[0]) {
-      console.log("[slotslaunch] sample raw game object:", JSON.stringify(items[0]).slice(0, 500));
+    if (page === 1) {
+      console.log(
+        `[slotslaunch] page 1 response: top-level keys=${Object.keys(data).join(",")}, items=${items.length}`
+      );
+      if (items[0]) console.log("[slotslaunch] sample raw game object:", JSON.stringify(items[0]).slice(0, 500));
     }
     games.push(...items.map(normalize));
     lastPage = (data.meta && (data.meta.last_page || data.meta.lastPage)) || data.last_page || 1;
@@ -82,6 +85,13 @@ async function buildCatalog() {
   } while (page <= lastPage && page <= MAX_PAGES);
 
   return games;
+}
+
+// Raw first-page response for diagnostics (no token in the output).
+async function debugSample() {
+  if (!TOKEN) throw new Error("SLOTSLAUNCH_API_TOKEN is not set");
+  const data = await fetchPage(1);
+  return { origin: `https://${ORIGIN}`, topLevelKeys: Object.keys(data), raw: data };
 }
 
 async function getCatalog({ force = false } = {}) {
@@ -94,4 +104,4 @@ async function getCatalog({ force = false } = {}) {
   return catalogCache;
 }
 
-module.exports = { getCatalog, isConfigured: () => Boolean(TOKEN) };
+module.exports = { getCatalog, debugSample, isConfigured: () => Boolean(TOKEN) };
