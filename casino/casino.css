@@ -23,6 +23,15 @@ body{
   border:1px solid var(--line);padding:5px 12px;border-radius:8px;background:var(--panel)}
 .cs-chip{font-size:.95rem}
 
+/* ── Source tabs (real games vs own engine) ──────────────*/
+.cs-source-tabs{display:flex;gap:2px;padding:0 20px;background:#081420;border-bottom:1px solid var(--line)}
+.cs-source-tab{
+  background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);
+  padding:12px 16px;font-size:.82rem;font-weight:700;cursor:pointer;
+}
+.cs-source-tab:hover{color:var(--text)}
+.cs-source-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
 /* ── Toolbar ──────────────────────────────────────────── */
 .cs-toolbar{
   display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 20px;

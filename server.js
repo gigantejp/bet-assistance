@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const casino = require("./casinoService");
+const slotsLaunch = require("./slotsLaunchService");
 
 const BUILD_VERSION = (() => {
   try {
@@ -279,6 +280,18 @@ app.post("/api/casino/collect", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 502).json({ error: err.message });
+  }
+});
+
+// ── CASINO — real branded games via SlotsLaunch (free-play iframe embeds) ──
+app.get("/api/casino/real/catalog", async (_req, res) => {
+  if (!slotsLaunch.isConfigured()) {
+    return res.status(503).json({ error: "SLOTSLAUNCH_API_TOKEN is not configured" });
+  }
+  try {
+    res.json({ games: await slotsLaunch.getCatalog() });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 
@@ -1242,4 +1255,5 @@ app.listen(PORT, () => {
   console.log("ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "loaded" : "MISSING");
   console.log("ODDSAPI_API_KEY:", process.env.ODDSAPI_API_KEY ? "loaded" : "MISSING");
   console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "loaded" : "MISSING");
+  console.log("SLOTSLAUNCH_API_TOKEN:", process.env.SLOTSLAUNCH_API_TOKEN ? "loaded" : "MISSING");
 });
