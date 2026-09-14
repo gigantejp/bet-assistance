@@ -2,15 +2,16 @@
 // engine (via casinoService.js on our own backend). No local RNG here —
 // every spin outcome comes straight from that engine's HTTP API.
 (function (global) {
-  const PALETTE = ["🍒", "🍋", "🍇", "🔔", "⭐", "💎", "7️⃣", "🍀", "👑", "🃏", "🐲", "🦅", "🔥", "❄️", "⚡", "🌙", "🌟", "🍉", "🍊", "🎭"];
+  const FALLBACK_PALETTE = ["🍒", "🍋", "🍇", "🔔", "⭐", "💎", "7️⃣", "👑"];
 
   function fmt(n) {
     return Math.round(n).toLocaleString("es-ES");
   }
 
-  function iconFor(symId) {
+  function iconFor(symId, palette) {
     if (symId === 0) return "";
-    return PALETTE[Math.abs(symId - 1) % PALETTE.length];
+    const set = palette && palette.length ? palette : FALLBACK_PALETTE;
+    return set[Math.abs(symId - 1) % set.length];
   }
 
   function winKeySet(wins) {
@@ -25,6 +26,7 @@
   function mountSlot(root, meta, gid, initial, wallet, ctx) {
     let bet = initial.bet || 1;
     let spinning = false;
+    const palette = (meta.theme && meta.theme.symbols) || FALLBACK_PALETTE;
 
     root.innerHTML = `
       <div class="game-hud">
@@ -65,7 +67,7 @@
         for (let r = 0; r < meta.rows; r++) {
           const cell = document.createElement("div");
           cell.className = "slot-cell";
-          cell.textContent = iconFor(values[c][r]);
+          cell.textContent = iconFor(values[c][r], palette);
           reel.appendChild(cell);
           col.push(cell);
         }

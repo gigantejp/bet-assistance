@@ -97,7 +97,7 @@ body{
   width:min(480px,100%);max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);
 }
 .cs-modal-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
-.cs-modal-icon{font-size:1.8rem}
+.cs-modal-icon{font-size:1.8rem;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:12px;flex-shrink:0}
 .cs-modal-name{font-weight:800;font-size:.95rem}
 .cs-modal-provider{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .cs-modal-close{

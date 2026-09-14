@@ -50,15 +50,21 @@
   let allGames = [];
   let activeCat = "all";
 
+  function gradientStyle(g) {
+    const [a, b] = (g.theme && g.theme.gradient) || ["#3a4a6b", "#10182c"];
+    return `background:linear-gradient(135deg, ${a}, ${b});`;
+  }
+
   function cardHTML(g) {
     const dims = g.category === "keno" ? "80 números" : `${g.reels}x${g.rows}`;
     const betUnit = g.category === "keno" ? null : g.ways ? `${g.ways} formas` : g.lines ? `${g.lines} líneas` : null;
     const tags = (g.tags || []).slice(0, 2).map((t) => TAG_LABELS[t] || t);
+    const icon = g.category === "keno" ? "🎱" : (g.theme && g.theme.icon) || "🎰";
     return `
       <div class="cs-card" data-id="${g.id}">
-        <div class="cs-thumb">
+        <div class="cs-thumb" style="${gradientStyle(g)}">
           <span class="cs-thumb-cat">${g.category === "keno" ? "Keno" : "Slot"}</span>
-          <span>${g.category === "keno" ? "🎱" : "🎰"}</span>
+          <span>${icon}</span>
           ${g.rtpTarget ? `<span class="cs-thumb-rtp">${g.rtpTarget.toFixed(1)}% RTP</span>` : ""}
         </div>
         <div class="cs-body">
@@ -93,7 +99,8 @@
   async function openGame(id) {
     const game = allGames.find((g) => g.id === id);
     if (!game) return;
-    modalIcon.textContent = game.category === "keno" ? "🎱" : "🎰";
+    modalIcon.textContent = game.category === "keno" ? "🎱" : (game.theme && game.theme.icon) || "🎰";
+    modalIcon.style.cssText = game.category === "keno" ? "" : gradientStyle(game);
     modalName.textContent = game.name;
     modalProvider.textContent = `${game.provider} · ${game.category === "keno" ? "Keno" : "Tragamonedas"}`;
     modal.hidden = false;
