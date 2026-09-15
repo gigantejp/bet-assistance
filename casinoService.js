@@ -254,13 +254,17 @@ async function buildCatalog() {
     const tags = GP_TAGS.filter(([, mask]) => (alg.gp || 0) & mask).map(([name]) => name);
     if (alg.bn) tags.push("bonus_game");
     for (const alias of alg.aliases || []) {
-      const theme = pickTheme(alias.name);
+      const isKeno = alg.gt === 2;
+      let theme = pickTheme(alias.name);
+      if (isKeno && theme === DEFAULT_THEME) {
+        theme = { icon: "🎱", gradient: ["#3a3f5a", "#12141f"], symbols: DEFAULT_THEME.symbols };
+      }
       games.push({
         id: slugify(`${alias.prov}-${alias.name}`),
         alias: `${alias.prov} / ${alias.name}`,
         name: alias.name,
         provider: alias.prov,
-        category: alg.gt === 2 ? "keno" : "slot",
+        category: isKeno ? "keno" : "slot",
         reels: alg.sx || null,
         rows: alg.sy || null,
         symbols: alg.sn || null,
