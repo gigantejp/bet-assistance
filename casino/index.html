@@ -8,78 +8,132 @@
 </head>
 <body>
 
-<header class="cs-header">
-  <a class="cs-logo" href="/index.html">⚡ SportsBetting</a>
-  <span class="cs-sep">/</span>
-  <span class="cs-logo cs-logo-casino">🎰 Casino</span>
-  <span class="badge">Demo</span>
-  <span class="badge" id="build-wrap" title="Build desplegado"></span>
-  <span class="cs-spacer"></span>
-  <span class="cs-credits" title="Créditos de demostración">
-    <span class="cs-chip">🪙</span>
-    <span id="cs-balance">1,000</span>
-  </span>
-</header>
+<div class="cx-app">
+  <aside class="cx-sidebar" id="cx-sidebar">
+    <a class="cx-brand" href="/index.html">
+      <span class="cx-brand-bolt">⚡</span><span class="cx-brand-text">SportsBetting</span>
+    </a>
+    <nav class="cx-nav">
+      <div class="cx-nav-label">Casino</div>
+      <button class="cx-nav-item active" data-cat="all">
+        <span class="cx-nav-ico">🏠</span> Lobby
+      </button>
+      <button class="cx-nav-item" data-cat="slot">
+        <span class="cx-nav-ico">🎰</span> Tragamonedas
+      </button>
+      <button class="cx-nav-item" data-cat="keno">
+        <span class="cx-nav-ico">🎱</span> Keno
+      </button>
+      <button class="cx-nav-item cx-disabled" tabindex="-1">
+        <span class="cx-nav-ico">📺</span> En vivo <span class="cx-soon">Pronto</span>
+      </button>
+      <button class="cx-nav-item cx-disabled" tabindex="-1">
+        <span class="cx-nav-ico">🃏</span> Mesas <span class="cx-soon">Pronto</span>
+      </button>
+      <button class="cx-nav-item cx-disabled" tabindex="-1">
+        <span class="cx-nav-ico">⭐</span> Favoritos <span class="cx-soon">Pronto</span>
+      </button>
+      <div class="cx-nav-sep"></div>
+      <div class="cx-nav-label">Fuente</div>
+      <button class="cx-nav-item active" data-src="real">
+        <span class="cx-nav-ico">🎮</span> Juegos reales
+      </button>
+      <button class="cx-nav-item" data-src="engine">
+        <span class="cx-nav-ico">🧪</span> Motor propio
+      </button>
+    </nav>
+    <div class="cx-sidebar-foot">
+      <a href="https://github.com/slotopol/server" target="_blank" rel="noopener">slotopol/server</a> · MIT
+    </div>
+  </aside>
+
+  <div class="cx-main">
+    <header class="cx-topbar">
+      <button class="cx-burger" id="cx-burger" aria-label="Menú">☰</button>
+      <div class="cx-search-wrap">
+        <span class="cx-search-ico">🔍</span>
+        <input id="cx-search" class="cx-search" type="text" placeholder="Buscar juego o proveedor…" autocomplete="off">
+      </div>
+      <span class="badge" id="build-wrap" title="Build desplegado"></span>
+      <span class="cx-balance" title="Créditos de demostración">
+        <span class="cx-coin">🪙</span><span id="cs-balance">1,000</span>
+      </span>
+    </header>
+
+    <div class="cx-hero" id="cx-hero">
+      <div class="cx-hero-slide active" data-slide="0">
+        <div class="cx-hero-copy">
+          <span class="cx-hero-eyebrow">🔥 100% Demo</span>
+          <h1>Casino real, sin dinero real</h1>
+          <p>Matemática y RTP auténticos del motor slotopol — jugá gratis con créditos de prueba.</p>
+        </div>
+      </div>
+      <div class="cx-hero-slide" data-slide="1">
+        <div class="cx-hero-copy">
+          <span class="cx-hero-eyebrow">🎰 350+ juegos</span>
+          <h1>Tragamonedas de 11 proveedores</h1>
+          <p>CT Interactive, Novomatic, NetEnt, Playtech, y más — todos con RTP real.</p>
+        </div>
+      </div>
+      <div class="cx-hero-slide" data-slide="2">
+        <div class="cx-hero-copy">
+          <span class="cx-hero-eyebrow">🎱 Keno en vivo</span>
+          <h1>20 números, 80 casillas</h1>
+          <p>El clásico Keno con resultados calculados por el motor real, no simulados.</p>
+        </div>
+      </div>
+      <div class="cx-hero-dots" id="cx-hero-dots"></div>
+    </div>
+
+    <div class="cx-count" id="cx-count"></div>
+    <main class="cx-rows" id="cx-rows">
+      <div class="cs-state">Cargando catálogo…</div>
+    </main>
+
+    <footer class="cx-footer" id="cx-footer-real">
+      Juegos reales y con marca (NetEnt, Pragmatic Play, y otros) en modo demo/fun-play, servidos vía
+      <a href="https://slotslaunch.com" target="_blank" rel="noopener">SlotsLaunch</a>. Sin dinero real: por eso no
+      requiere licencia de juego. Cada partida corre dentro del iframe oficial del proveedor.
+    </footer>
+    <footer class="cx-footer" id="cx-footer-engine" hidden>
+      Este lobby corre sobre un servidor real y propio de
+      <a href="https://github.com/slotopol/server" target="_blank" rel="noopener">slotopol/server</a> (MIT, self-hosted):
+      el catálogo, las grillas, las líneas/formas y los resultados de cada giro salen 100% de ese motor. Los símbolos
+      se muestran con íconos genéricos propios (el proyecto original no incluye gráficos), y los créditos son de demo.
+    </footer>
+  </div>
+</div>
+
 <script>
 fetch("/api/version").then(r=>r.json()).then(d=>{
   const el = document.getElementById("build-wrap");
   if (el) el.textContent = `v${d.version} · ${d.commit}`;
 }).catch(()=>{});
-</script>
 
-<div class="cs-source-tabs" id="cs-source-tabs">
-  <button class="cs-source-tab active" data-src="real">🎮 Juegos reales</button>
-  <button class="cs-source-tab" data-src="engine">🧪 Motor propio (slotopol)</button>
-</div>
-
-<section id="cs-section-real">
-  <div class="cs-toolbar">
-    <input id="csr-search" class="cs-search" type="text" placeholder="Buscar juego…" autocomplete="off">
-    <select id="csr-provider" class="cs-select"></select>
-    <span class="cs-count" id="csr-count"></span>
-  </div>
-  <main class="cs-lobby" id="cs-lobby-real">
-    <div class="cs-state">Cargando catálogo…</div>
-  </main>
-  <footer class="cs-footer">
-    Juegos reales y con marca (NetEnt, Pragmatic Play, y otros) en modo demo/fun-play, servidos vía
-    <a href="https://slotslaunch.com" target="_blank" rel="noopener">SlotsLaunch</a>. Sin dinero real: por eso no
-    requiere licencia de juego. Cada partida corre dentro del iframe oficial del proveedor.
-  </footer>
-</section>
-
-<section id="cs-section-engine" hidden>
-  <div class="cs-toolbar">
-    <input id="cs-search" class="cs-search" type="text" placeholder="Buscar juego…" autocomplete="off">
-    <select id="cs-provider" class="cs-select"></select>
-    <div class="cs-cats" id="cs-cats">
-      <button class="cs-cat active" data-cat="all">Todos</button>
-      <button class="cs-cat" data-cat="slot">Tragamonedas</button>
-      <button class="cs-cat" data-cat="keno">Keno</button>
-    </div>
-    <span class="cs-count" id="cs-count"></span>
-  </div>
-  <main class="cs-lobby" id="cs-lobby">
-    <div class="cs-state">Cargando catálogo…</div>
-  </main>
-  <footer class="cs-footer">
-    Este lobby corre sobre un servidor real y propio de
-    <a href="https://github.com/slotopol/server" target="_blank" rel="noopener">slotopol/server</a> (MIT, self-hosted):
-    el catálogo, las grillas, las líneas/formas y los resultados de cada giro salen 100% de ese motor. Los símbolos
-    se muestran con íconos genéricos propios (el proyecto original no incluye gráficos), y los créditos son de demo.
-  </footer>
-</section>
-
-<script>
-document.getElementById("cs-source-tabs").addEventListener("click", (e) => {
-  const btn = e.target.closest(".cs-source-tab");
-  if (!btn) return;
-  document.querySelectorAll(".cs-source-tab").forEach((b) => b.classList.remove("active"));
-  btn.classList.add("active");
-  const src = btn.dataset.src;
-  document.getElementById("cs-section-real").hidden = src !== "real";
-  document.getElementById("cs-section-engine").hidden = src !== "engine";
+document.getElementById("cx-burger").addEventListener("click", () => {
+  document.getElementById("cx-sidebar").classList.toggle("cx-open");
 });
+
+// Hero carousel
+(() => {
+  const slides = [...document.querySelectorAll(".cx-hero-slide")];
+  const dotsEl = document.getElementById("cx-hero-dots");
+  slides.forEach((_, i) => {
+    const dot = document.createElement("button");
+    dot.className = "cx-hero-dot" + (i === 0 ? " active" : "");
+    dot.onclick = () => go(i);
+    dotsEl.appendChild(dot);
+  });
+  let idx = 0;
+  function go(i) {
+    slides[idx].classList.remove("active");
+    dotsEl.children[idx].classList.remove("active");
+    idx = i;
+    slides[idx].classList.add("active");
+    dotsEl.children[idx].classList.add("active");
+  }
+  setInterval(() => go((idx + 1) % slides.length), 5000);
+})();
 </script>
 
 <div class="cs-modal" id="cs-modal" hidden>
@@ -102,5 +156,6 @@ document.getElementById("cs-source-tabs").addEventListener("click", (e) => {
 <script src="engine.js"></script>
 <script src="casino.js"></script>
 <script src="real-games.js"></script>
+<script src="lobby.js"></script>
 </body>
 </html>
